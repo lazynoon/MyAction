@@ -3,30 +3,34 @@ package net_io.utils;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.net.URL;
 import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 
 public class FindClassUtils {
-	public static void main(String[] args) {
-		// String ss="cn.yyzx.test.TestC";
-		// try {
-		// Thread a=(Thread) Class.forName(ss).newInstance();
-		// a.start();
-		// } catch (Exception e) {
-		// e.printStackTrace();
-		// }
-		List<String> cls = getClassInPackage("myaction");
-		for (String s : cls) {
-			System.out.println("class11:"+s);
-		}
+	private static ClassLoader defaultLoader = null;
+	
+	public static void setDefaultClassLoader(ClassLoader loader) {
+		defaultLoader = loader;
+	}
+
+	public static ClassLoader getDefaultClassLoader() {
+		return defaultLoader;
 	}
 
 	public static List<String> getClassInPackage(String pkgName) {
+		return getClassInPackage(pkgName, defaultLoader);
+	}
+	
+	public static List<String> getClassInPackage(String pkgName, ClassLoader loader) {
 		List<String> ret = new ArrayList<String>();
 		try {
-			for(File classPath : CLASS_PATH_ARRAY) {
+//			for(File classPath : CLASS_PATH_ARRAY) {
+			for(File classPath : getClassPath(loader)) {
 				if(!classPath.exists())
 					continue;
 				for(String className : _getClassInPackage(pkgName, classPath)) {
@@ -36,9 +40,7 @@ public class FindClassUtils {
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
-
-		return ret;
-		
+		return ret;	
 	}
  
 	public static List<String> getClassInPackage(String pkgName, String classPath) {
@@ -106,13 +108,17 @@ public class FindClassUtils {
 
 	private static String[] CLASS_PATH_PROP = { "java.class.path", "java.ext.dirs", "sun.boot.class.path" };
 
-	private static List<File> CLASS_PATH_ARRAY = getClassPath();
+	//private static List<File> CLASS_PATH_ARRAY = getClassPath();
 
-	private static List<File> getClassPath() {
+	public static List<File> getClassPath(ClassLoader loader) throws IOException {
 		List<File> ret = new ArrayList<File>();
+		HashMap<String, Boolean> existPaths = new HashMap<String, Boolean>();
 		String delim = ":";
-		if (System.getProperty("os.name").indexOf("Windows") != -1)
+		boolean isWindowsOS = false;
+		if (System.getProperty("os.name").indexOf("Windows") != -1) {
+			isWindowsOS = true;
 			delim = ";";
+		}
 		if(NetLog.LOG_LEVEL <= NetLog.RECORD_ALL) {
 			NetLog.logDebug("[FindClass] current OS: "+System.getProperty("os.name"));
 		}
@@ -122,9 +128,45 @@ public class FindClassUtils {
 				if(NetLog.LOG_LEVEL <= NetLog.RECORD_ALL) {
 					NetLog.logDebug("[FindClass] auto search classpath: "+path);
 				}
-				ret.add(new File(path));
+				File file = new File(path);
+			    String absPath = file.getAbsolutePath();
+			    if(existPaths.containsKey(absPath) == false) {
+			    	ret.add(file);
+			    	existPaths.put(absPath, true);
+			    }
 			}
 		}
+		if(loader != null) {
+			Enumeration<URL> eurls = loader.getResources("");
+			while (eurls.hasMoreElements()) {
+			    URL url = eurls.nextElement();
+			    String path = url.getPath();
+			    if(path == null || path.length() < 2) {
+			    	continue;
+			    }
+				if(NetLog.LOG_LEVEL <= NetLog.RECORD_ALL) {
+					NetLog.logDebug("[FindClass] auto search by ClassLoader: "+path);
+				}
+				if(isWindowsOS) {
+				    if(path.startsWith("/")) {
+				    	path = path.substring(1);
+				    } else if(path.startsWith("file:/") && path.endsWith("!/")) {
+				    	path = path.substring(6, path.length()-2);
+				    }
+				} else {
+					if(path.startsWith("file:") && path.endsWith("!/")) {
+				    	path = path.substring(5, path.length()-2);
+				    }
+				}
+			    File file = new File(path);
+			    String absPath = file.getAbsolutePath();
+			    if(existPaths.containsKey(absPath) == false) {
+			    	ret.add(file);
+			    	existPaths.put(absPath, true);
+			    }
+			}
+		}
+			
 		return ret;
 	}
 }

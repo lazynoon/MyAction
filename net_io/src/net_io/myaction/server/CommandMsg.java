@@ -10,6 +10,9 @@ public class CommandMsg extends BaseMsg {
 	public static final int MSG_ID = 0x8300;
 //	protected int option = 0; //0: 请求；1：响应
 	protected int requestID = 0;
+	//private static AtomicLong generateRequestID = new AtomicLong(0);
+	// /** 默认的RequestID。顺序自增加 **/
+	//protected int requestID = (int)generateRequestID.incrementAndGet(); 
 	protected String path = null;
 //	protected String method = null;
 	protected int systemCode = 0;

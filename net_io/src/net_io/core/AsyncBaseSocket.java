@@ -8,8 +8,9 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import net_io.utils.NetLog;
@@ -24,17 +25,23 @@ abstract public class AsyncBaseSocket {
 	
 	//是否作为守护线程运行。默认为：0，表示可自动根据端类型设置。ClientSide默认设置为1（即：守护线程），ServerSide默认为2（即：用户线程） 
 	private int daemon = 0; 
+	
+	/** Lister Channel Map **/
+	private Map<InetSocketAddress, ServerSocketChannel> listenChannels = new ConcurrentHashMap<InetSocketAddress, ServerSocketChannel>();
+	
 	protected ConcurrentLinkedQueue<NetChannel> regQueue = new ConcurrentLinkedQueue<NetChannel>();
 	protected ConcurrentLinkedQueue<ServerSocketChannel> bindQueue = new ConcurrentLinkedQueue<ServerSocketChannel>();
+	protected ConcurrentLinkedQueue<EventUpdate> eventUpdateQueue = new ConcurrentLinkedQueue<EventUpdate>();
 	protected NetChannelPool channelPool = null;
 	final public static int DEFAULT_BACKLOG = 1024;
 	// 绑定的端口
-	private ArrayList<InetSocketAddress> bindAddressList = null;
-	private ArrayList<ServerSocketChannel> serverChannels = new ArrayList<ServerSocketChannel>();
+//	private ArrayList<InetSocketAddress> bindAddressList = null;
+//	private ArrayList<ServerSocketChannel> serverChannels = new ArrayList<ServerSocketChannel>();
 
 	public AsyncBaseSocket(AsyncSocketProcessor processor) {
 		this.processor = processor;
-		this.channelPool = new NetChannelPool(1024*1024);
+		this.channelPool = new NetChannelPool(512*1024);
+		StatNIO.bossClass.create_aync_socket.incrementAndGet(); //StatNIO
 	}
 	
 	public void setThreadName(String name) {
@@ -63,14 +70,26 @@ abstract public class AsyncBaseSocket {
 		return (this.daemon != 2);
 	}
 	
-
+	/**
+	 * 侦听一个端口号（不限IP）
+	 * @param port 端口号
+	 * @throws IOException
+	 */
 	public void bind(int port) throws IOException {
 		bind(new InetSocketAddress(port));
 	}
 	public void bind(InetSocketAddress address) throws IOException {
 		bind(address, DEFAULT_BACKLOG);
 	}
-	public void bind(InetSocketAddress address, int backlog) throws IOException {
+	
+	/**
+	 * 侦听端口号
+	 * @param address InetSocketAddress网络地址
+	 * @param backlog requested maximum length of the queue of incoming connections.
+	 * @throws IOException
+	 */
+	synchronized public void bind(InetSocketAddress address, int backlog) throws IOException {
+		StatNIO.bossClass.bind_invoke_start.incrementAndGet(); //StatNIO
 		//设置 daemon 默认为 “用户线程”
 		if(this.daemon == 0) {
 			this.daemon = 2;
@@ -84,17 +103,20 @@ abstract public class AsyncBaseSocket {
 		ServerSocketChannel serverChannel = ServerSocketChannel.open();	//Open this server socket channel.
 		serverChannel.socket().setReuseAddress(true);
 		serverChannel.socket().bind(address, backlog);	//Bind a port, and listen to it.
-		
+		//配置SOCKET为非阻塞模式
 		serverChannel.configureBlocking(false);
-		
-		
+
+		//保存侦听对象
+		listenChannels.put(address, serverChannel);
+		//加入到接收连接的处理队列
 		bindQueue.add(serverChannel);
 		
+		
 		//保存已绑定的地址
-		if(bindAddressList == null) {
-			bindAddressList = new ArrayList<InetSocketAddress>();
-		}
-		bindAddressList.add(address);
+//		if(bindAddressList == null) {
+//			bindAddressList = new ArrayList<InetSocketAddress>();
+//		}
+//		bindAddressList.add(address);
 		
 		//启动线程
 		if(needStartThread) {
@@ -102,7 +124,48 @@ abstract public class AsyncBaseSocket {
 		} else {
 			selector.wakeup();
 		}
+		StatNIO.bossClass.bind_invoke_end.incrementAndGet(); //StatNIO
 	}
+	
+	/**
+	 * 取消侦听地址
+	 * @param port 端口号
+	 * @throws IOException 
+	 */
+	public void unbind(int port) throws IOException {
+		unbind(new InetSocketAddress(port));
+	}
+	
+	/**
+	 * 取消侦听地址
+	 * @param address InetSocketAddress
+	 * @throws IOException 
+	 */
+	public void unbind(InetSocketAddress address) throws IOException {
+		StatNIO.bossClass.unbind_invoke_start.incrementAndGet(); //StatNIO
+		ServerSocketChannel channel = listenChannels.remove(address);
+		if(channel == null) {
+			StatNIO.bossClass.unbind_not_exist.incrementAndGet(); //StatNIO
+			return;
+		}
+		channel.socket().close();
+		channel.close();
+		StatNIO.bossClass.unbind_invoke_end.incrementAndGet(); //StatNIO
+	}
+	
+	/**
+	 * 取消所有侦听
+	 */
+	public void unbindAll() {
+		for(InetSocketAddress address : listenChannels.keySet()) {
+			try {
+				unbind(address);
+			} catch (IOException e) {
+				NetLog.logError(e);
+			}
+		}
+	}
+	
 	
 	/**
 	 * 发起连接
@@ -111,7 +174,7 @@ abstract public class AsyncBaseSocket {
 	 * @return
 	 * @throws Exception
 	 */
-	public NetChannel connect(String host, int port) throws Exception {
+	public NetChannel connect(String host, int port) throws IOException {
 		InetSocketAddress remote = new InetSocketAddress(host, port);
 		return connect(remote);
 	}
@@ -122,11 +185,12 @@ abstract public class AsyncBaseSocket {
 	 * @return
 	 * @throws Exception
 	 */
-	public NetChannel connect(final InetSocketAddress remote) throws Exception {
+	public NetChannel connect(final InetSocketAddress remote) throws IOException {
+		StatNIO.bossClass.connect_invoke_start.incrementAndGet(); //StatNIO
 		//检查并启动BOSS线程（含selector初始化）
 		boolean needStartThread = false;
 		if(run == null) {
-			needStartThread = initBossThread();
+			needStartThread = initBossThread(); //内部含同步锁
 		}
 		//连接初始化
 		SocketChannel socket = SocketChannel.open();
@@ -142,15 +206,19 @@ abstract public class AsyncBaseSocket {
 
 			@Override
 			public void doConnect(NetChannel channel) throws Exception {
+				StatNIO.bossClass.do_connect_start.incrementAndGet(); //StatNIO
 				boolean ret = channel.socket.connect(remote);
 				if(ret) { //连接立即成功
+					StatNIO.bossClass.do_connect_immediate.incrementAndGet(); //StatNIO
 					channel._gotoEstablished(); //设置NetChannel状态：ESTABLISHED
 					//增加监控“读”事件
 					SelectionKey key = channel.socket.keyFor(asyncSocket.selector);
 					key.interestOps(key.interestOps() | SelectionKey.OP_READ);
 					//回调连接成功消息
 					asyncSocket.processor.onConnect(channel);
+					StatNIO.bossClass.do_connect_finish.incrementAndGet(); //StatNIO
 				}
+				StatNIO.bossClass.do_connect_end.incrementAndGet(); //StatNIO
 			}
 			
 		};
@@ -163,6 +231,7 @@ abstract public class AsyncBaseSocket {
 		} else {
 			selector.wakeup();
 		}
+		StatNIO.bossClass.connect_invoke_end.incrementAndGet(); //StatNIO
 		return channel;
 	}
 	
@@ -203,67 +272,79 @@ abstract public class AsyncBaseSocket {
 	 * @param socket
 	 */
 	protected void closeSocketChannel(SocketChannel socket) {
+		StatNIO.bossClass.close_channel_start.incrementAndGet(); //StatNIO
 		//boolean firstClose = socket.isOpen();
 		//NetLog.logDebug(new Exception("closeSocketChannel: "+socket));
 		NetLog.logDebug("closeSocketChannel: "+socket);
 		try {
 			socket.socket().close();
 			socket.close();
-		} catch (Exception e) {
+			StatNIO.bossClass.close_socket_pass.incrementAndGet(); //StatNIO
+		} catch (IOException e) {
+			StatNIO.bossClass.close_socket_error.incrementAndGet(); //StatNIO
 			NetLog.logWarn("[SocketCloseError] "+Thread.currentThread().getName());
 			NetLog.logWarn(e);
 		}
 		SelectionKey key = socket.keyFor(selector);
 		if(key != null) {
+			StatNIO.bossClass.close_selection_cancel.incrementAndGet(); //StatNIO
 			key.cancel();
 		} else {
-			NetLog.logDebug("Cat not find SelectionKey. Socket: "+socket);
+			StatNIO.bossClass.close_selection_null.incrementAndGet(); //StatNIO
+			//NetLog.logDebug("Cat not find SelectionKey. Socket: "+socket);
 		}
 		NetChannel channel = channelPool.get(socket);
 		if(channel != null) {
+			StatNIO.bossClass.close_net_channel.incrementAndGet(); //StatNIO
 			try {
 				channel._gotoCloseWait(); //设置NetChannel状态：CLOSE_WAIT
 				processor.onClose(channel);
+				StatNIO.bossClass.close_goto_wait.incrementAndGet(); //StatNIO
 			} catch (Exception e) {
+				StatNIO.bossClass.close_callback_error.incrementAndGet(); //StatNIO
 				NetLog.logWarn("[AppCloseError] "+Thread.currentThread().getName());
 				NetLog.logWarn(e);
 			} finally {
 				channel.closed(); //连接关闭了，由Channel，取消注册的事件
 			}
 		} else {
+			StatNIO.bossClass.close_twice_invoke.incrementAndGet(); //StatNIO
 			NetLog.logDebug(new Exception(Thread.currentThread().getName()+" - Twice close channel."));
 		}
-	}
-	
-	/**
-	 * 关闭所有服务channel
-	 */
-	public void closeAllServerChannel() {
-		for(ServerSocketChannel channel : serverChannels) {
-			try {
-				channel.close();
-			} catch (IOException e) {
-				NetLog.logError(e);
-			}
-		}
-		serverChannels = new ArrayList<ServerSocketChannel>();
+		StatNIO.bossClass.close_channel_end.incrementAndGet(); //StatNIO
 	}
 	
 //	/**
-//	 * 关闭BOSS线程，停止服务
-//	 * @param delay 延时N秒
-//	 * @throws IOException
+//	 * 关闭所有服务channel
 //	 */
-//	public void stop(int delay) throws IOException {
-//		
+//	public void closeAllServerChannel() {
+//		for(ServerSocketChannel channel : serverChannels) {
+//			try {
+//				channel.close();
+//			} catch (IOException e) {
+//				NetLog.logError(e);
+//			}
+//		}
+//		serverChannels = new ArrayList<ServerSocketChannel>();
 //	}
 //	
 	/**
-	 * 关闭BOSS线程，停止服务
+	 * 延迟关闭BOSS线程，停止服务：TODO 延迟功能
+	 * @param delay 延时N秒
+	 * @throws IOException
+	 */
+	public void stop(int delay) {
+		this.unbindAll();
+		runable = false;
+		this.selector.wakeup();
+	}
+	
+	/**
+	 * 立即关闭BOSS线程，停止服务
 	 * @throws IOException
 	 */
 	public void stop() throws IOException {
-		this.closeAllServerChannel();
+		this.unbindAll();
 		runable = false;
 		this.selector.wakeup();
 	}
@@ -299,30 +380,50 @@ abstract public class AsyncBaseSocket {
 			//侦听队列检查
 			ServerSocketChannel serverChannel;
 			while((serverChannel = bindQueue.poll()) != null) {
+				StatNIO.bossClass.event_register_accept.incrementAndGet(); //StatNIO
 				serverChannel.register(selector, SelectionKey.OP_ACCEPT);	//Register the server socket channel to the selector, and accept any connection.						
-				//侦听channel被客户端关闭
-				serverChannels.add(serverChannel);
+//				//侦听channel被客户端关闭
+//				serverChannels.add(serverChannel);
 			}
 			//注册队列加入到侦听连接队列
 			while((channel = regQueue.poll()) != null) {
+				StatNIO.bossClass.event_register_connect.incrementAndGet(); //StatNIO
 				channel.socket.register(selector, SelectionKey.OP_CONNECT);
 				if(channel.channelRegisterHandle != null) {
 					try {
 						channel.channelRegisterHandle.doConnect(channel);
 					} catch (Exception e) {
+						StatNIO.bossClass.event_doconnect_error.incrementAndGet(); //StatNIO
 						NetLog.logWarn(e);
 						closeSocketChannel(channel.socket);
 					}
+				} else {
+					StatNIO.bossClass.event_no_onconnect.incrementAndGet(); //StatNIO
 				}
+			}
+			//事件更新队列
+			EventUpdate eventUpdate;
+			while((eventUpdate=eventUpdateQueue.poll()) != null) {
+				if(eventUpdate.key.isValid() == false) {
+					continue;
+				}
+				int optValue = eventUpdate.key.interestOps();
+				if(eventUpdate.mode == EventUpdate.MODE.OR) {
+					optValue |= eventUpdate.optValue;
+				} else if(eventUpdate.mode == EventUpdate.MODE.AND) {
+					optValue &= eventUpdate.optValue;
+				}
+				eventUpdate.key.interestOps(optValue);
 			}
 			//侦听消息
 			if(selector.select() == 0) {
 				  return;
 			}
 		} catch (IOException e) {
+			StatNIO.bossClass.event_register_error.incrementAndGet(); //StatNIO
 			NetLog.logWarn(e);
 			try {
-				Thread.sleep(100);
+				Thread.sleep(10);
 			} catch (InterruptedException e1) {
 				NetLog.logInfo(e1);
 			}
@@ -331,20 +432,24 @@ abstract public class AsyncBaseSocket {
 		Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
 		SelectionKey key = null;
 		while(iterator.hasNext()) {
+			StatNIO.bossClass.event_active_selection.incrementAndGet(); //StatNIO
 			key = iterator.next();
 			iterator.remove();
 			SocketChannel socket = null;
 			try {
 				//在其它线程中，可能会取消key。先做一下检查
 				if(key.isValid() == false) {
+					StatNIO.bossClass.event_invalid_selection.incrementAndGet(); //StatNIO
 					key.cancel(); //保险起见，重复调用取消key的操作
 					continue;
 				}
 				//Starts to accept any connection from client.
 				if(key.isAcceptable()) {
+					StatNIO.bossClass.event_acceptable_selection.incrementAndGet(); //StatNIO
 					ServerSocketChannel newServerChannel = (ServerSocketChannel)key.channel();
 					//外部调用：新连接检查
-					if(processor.acceptPrecheck(newServerChannel.socket()) == false) {
+					if(processor.acceptPrecheck(this, newServerChannel.socket()) == false) {
+						StatNIO.bossClass.run_not_accept.incrementAndGet(); //StatNIO
 						continue;
 					}
 					socket = newServerChannel.accept();
@@ -363,6 +468,7 @@ abstract public class AsyncBaseSocket {
 					socket = (SocketChannel)key.channel();
 					channel = channelPool.get(socket);
 					if(channel == null) {
+						StatNIO.bossClass.event_unregister_channel.incrementAndGet(); //StatNIO
 						closeSocketChannel(socket); //未注册的频道，直接关闭连接
 						continue;
 					}
@@ -370,10 +476,13 @@ abstract public class AsyncBaseSocket {
 					channel.lastAliveTime = System.currentTimeMillis();
 					//1. 连接事件处理
 					if(key.isConnectable()) {
+						StatNIO.bossClass.event_connectable_selection.incrementAndGet(); //StatNIO
 						if(socket.isConnectionPending()) { //等待完成连接
+							StatNIO.bossClass.run_connection_pedding.incrementAndGet(); //StatNIO
 							try {
 								key.interestOps(SelectionKey.OP_READ);
 								if(socket.finishConnect()) {
+									StatNIO.bossClass.run_finish_connect.incrementAndGet(); //StatNIO
 									//内部调用：连接建立
 									channel._gotoEstablished(); //设置NetChannel状态：ESTABLISHED
 									//外部调用：连接成功通知
@@ -382,6 +491,7 @@ abstract public class AsyncBaseSocket {
 									closeSocketChannel(socket);
 								}
 							} catch(ConnectException e) {
+								channel.lastIOException = e; //设置IOException
 								closeSocketChannel(socket);
 								continue;
 							}
@@ -392,39 +502,51 @@ abstract public class AsyncBaseSocket {
 					}
 					//2. 发送准备完毕事件处理
 					if(key.isWritable()) {
+						StatNIO.bossClass.event_writable_selection.incrementAndGet(); //StatNIO
 						NetLog.logDebug("isWritable " + socket.socket());
 						ByteBuffer buff = null;
 						while((buff = channel._getSendBuff()) != null) {
-							socket.write(buff);
+							StatNIO.bossClass.run_write_buff.incrementAndGet(); //StatNIO
+							int size = socket.write(buff);
+							StatNIO.bossClass.run_write_size.addAndGet(size); //StatNIO
+							if(size <= 0) {
+								StatNIO.bossClass.run_write_zero.incrementAndGet(); //StatNIO
+							}
 							if(buff.hasRemaining()) { //一次没写完，等下次发送
+								StatNIO.bossClass.run_has_remaining.incrementAndGet(); //StatNIO
 								break;
 							}
 						}
 						//则移除写事件的侦听
 						//注意：并发注册了写事件的情况下，会丢失写事件。此时需要监控程序重新注册
 						if(buff == null) {
+							StatNIO.bossClass.run_remove_wriable.incrementAndGet(); //StatNIO
 							key.interestOps(key.interestOps() & (~SelectionKey.OP_WRITE));
 						}
 					}
 					//3. 读取事件处理
 					if(key.isReadable())	{
+						StatNIO.bossClass.event_readable_selection.incrementAndGet(); //StatNIO
 						NetLog.logDebug("isReadable " + socket.socket());
 						//外部调用：接收新消息
 						if(socket.isOpen()) {
 							processor.onReceive(channel);
 						} else {
+							StatNIO.bossClass.run_readsocket_closed.incrementAndGet(); //StatNIO
 							closeSocketChannel(socket);
 							continue;
 						}
 					}
 				}
 			} catch(IOException e) {
+				StatNIO.bossClass.run_io_exception.incrementAndGet(); //StatNIO
 				NetLog.logWarn(e);
 				if(socket != null) {
 					closeSocketChannel(socket);
 				}
 			} catch(Exception e) {
-				NetLog.logDebug(e);
+				StatNIO.bossClass.run_other_exception.incrementAndGet(); //StatNIO
+				NetLog.logError(e);
 				if(socket != null) {
 					closeSocketChannel(socket);
 				}
@@ -458,6 +580,7 @@ abstract public class AsyncBaseSocket {
 			while(iterator.hasNext()) {
 				SelectionKey key = iterator.next();
 				try {
+					StatNIO.bossClass.boss_selection_close.incrementAndGet(); //StatNIO
 					key.channel().close();
 				} catch (IOException e) {
 					NetLog.logError(e);
@@ -470,5 +593,16 @@ abstract public class AsyncBaseSocket {
 	abstract protected static class ChannelRegisterHandle {
 		abstract public void doConnect(NetChannel channel) throws Exception;
 	}
-
+	
+	static class EventUpdate {
+		enum MODE{AND,OR}
+		SelectionKey key;
+		int optValue;
+		MODE mode;
+		EventUpdate(SelectionKey key, int optValue, MODE mode) {
+			this.key = key;
+			this.optValue = optValue;
+			this.mode = mode;
+		}
+	}
 }

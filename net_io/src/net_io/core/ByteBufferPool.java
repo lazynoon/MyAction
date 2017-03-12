@@ -1,7 +1,6 @@
 package net_io.core;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 public class ByteBufferPool {
 	public static int MAX_BUFFER_SIZE = 1024 * 1024; //默认buffer大小最大为1M

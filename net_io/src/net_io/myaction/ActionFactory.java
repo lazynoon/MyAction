@@ -8,8 +8,32 @@ import net_io.utils.FindClassUtils;
 import net_io.utils.NetLog;
 
 public class ActionFactory {
+	private static String defaultCharset = "UTF-8"; //默认编码
 	private static Map<String, ActionClassMethod> actions = new HashMap<String, ActionClassMethod>(1024);
 	
+	/**
+	 * 设置MyAction默认的字符编码
+	 * @param charset 默认为UTF-8
+	 */
+	public static void setDefaultCharset(String charset) {
+		defaultCharset = charset;
+	}
+	
+	/**
+	 * 获取MyAction默认的字符编码
+	 * @return CharacterEncoding 如 UTF-8
+	 */
+	public static String getDefaultCharset() {
+		return defaultCharset;
+	}
+	
+	/**
+	 * 注册一个Action类
+	 * @param path
+	 * @param clazz
+	 * @param methodName
+	 * @param method
+	 */
 	public static void register(String path, Class<BaseMyAction> clazz, String methodName, Method method) {
 		if(path == null || path.length() == 0) {
 			throw new RuntimeException("The parameter of 'path' is empty.");
@@ -42,6 +66,11 @@ public class ActionFactory {
 		actions.put(key, info);
 	}
 
+	/**
+	 * 将路径转换为执行方法
+	 * @param path
+	 * @return ActionClassMethod
+	 */
 	public static ActionClassMethod get(String path) {
 		String method = "index"; //默认访问 doIndex() 方法
 		if(path == null || path.length() == 0) {

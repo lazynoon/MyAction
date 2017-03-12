@@ -1,15 +1,16 @@
 package net_io.myaction;
 
 import java.io.IOException;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 import net_io.core.ByteArray;
 import net_io.core.ByteBufferPool;
 import net_io.core.NetChannel;
+import net_io.core.NetChannel.Status;
 import net_io.myaction.server.CommandMsg;
-import net_io.myaction.server.MyActionSocket;
+import net_io.myaction.socket.MyActionSocket;
+import net_io.myaction.socket.SocketRequest;
+import net_io.myaction.socket.SocketResponse;
+import net_io.utils.thread.MyThreadPool;
 
 public class MyActionClient {
 	private MyActionSocket actionSocket = null;
@@ -17,9 +18,7 @@ public class MyActionClient {
 	private int defaultTimeout = 30000; //单位：ms
 	
 	public MyActionClient() {
-		ThreadPoolExecutor producerPool = new ThreadPoolExecutor(2, 16, 60,  
-                TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(1024),  
-                new ThreadPoolExecutor.DiscardOldestPolicy());
+		MyThreadPool producerPool = new MyThreadPool(8, 64);
 		this.actionSocket = new MyActionSocket(producerPool);
 	}
 	
@@ -35,8 +34,44 @@ public class MyActionClient {
 	public int getDefaultTimeout(int timeout) {
 		return this.defaultTimeout;
 	}
-	public void connect(String host, int port) throws Exception {
+	public int getSendQueueSize() {
+		if(channel == null) {
+			return 0;
+		}
+		return channel.getSendQueueSize();
+	}
+	public void connect(String host, int port) throws IOException {
+		connect(host, port, defaultTimeout);
+	}
+	
+	synchronized public void connect(String host, int port, long timeout) throws IOException {
+		//关闭旧连接
+		if(channel != null && (channel.getChannelStatus() == Status.CONNECT || channel.getChannelStatus() == Status.ESTABLISHED)) {
+			channel.close();
+		}
+		//创建新连接
 		channel = this.actionSocket.connect(host, port);
+		//等待连接完成
+		if(channel.waitConnect(timeout) == false) { //连接超时
+			channel.close(); //关闭连接
+			channel = null;
+		}
+	}
+	
+	/**
+	 * 检查是否需要连接
+	 * @return true需要重新连接，false不需要
+	 */
+	public boolean needConnect() {
+		if(channel == null || (channel.getChannelStatus() != Status.CONNECT && channel.getChannelStatus() != Status.ESTABLISHED)) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
+	public NetChannel getNetChannel() {
+		return channel;
 	}
 	
 	/**
@@ -44,31 +79,31 @@ public class MyActionClient {
 	 * @param request
 	 * @throws IOException
 	 */
-	public void anyncPost(Request request) throws IOException {
+	public void anyncPost(SocketRequest request) throws IOException {
 		post(request, -1);
 	}
 	/**
 	 * 接受异步提交的结果
 	 */
-	public Response anyncResponse(Request request) {
+	public Response anyncResponse(SocketRequest request) {
 		return anyncResponse(request, 0);
 	}
 	
-	public Response anyncResponse(Request request, int waitTime) {
+	public Response anyncResponse(SocketRequest request, int waitTime) {
 		return (Response)channel.fetchResponse(request.getRequestID(), waitTime);
 	}
 	
-	public void anyncPost(Request request, MyActionSocket.Reader reader) throws IOException {
+	public void anyncPost(SocketRequest request, MyActionSocket.Reader reader) throws IOException {
 		_post(request, reader, -1);
 	}
 	
-	public Response post(Request request) throws IOException {
-		return post(request, defaultTimeout);
+	public Response post(SocketRequest request) throws IOException {
+		return _post(request, null, defaultTimeout);
 	}
-	public Response post(Request request, int timeout) throws IOException {
+	public Response post(SocketRequest request, int timeout) throws IOException {
 		return _post(request, null, timeout);
 	}
-	private Response _post(Request request, MyActionSocket.Reader reader, int timeout) throws IOException {
+	private Response _post(SocketRequest request, MyActionSocket.Reader reader, int timeout) throws IOException {
 		int requestID = channel.generateSequenceID();
 		CommandMsg msg = request.generateCommandMsg();
 		msg.setRequestID(requestID);
@@ -86,9 +121,18 @@ public class MyActionClient {
 			//接收消息
 			Response response = null;
 			if(reader == null && timeout >= 0) { //reader等于null, 采用回调方式返回
+				long startTime = System.currentTimeMillis();
 				CommandMsg responseMsg = (CommandMsg)channel.fetchResponse(requestID, timeout);
+				long costTime = System.currentTimeMillis() - startTime;
 				if(responseMsg == null) {
-					throw new IOException("receive timeout!");
+					if(costTime>= timeout) {
+						throw new IOException("receive timeout!");
+					} else {
+						CommandMsg smsg = new CommandMsg();
+						response = Response.parse(smsg);
+						response.setError(580, "connect is closed.");
+						return response;
+					}
 				}
 				response = Response.parse(responseMsg);
 			}
@@ -103,7 +147,7 @@ public class MyActionClient {
 		
 	}
 	
-	public void sendResponse(Response response) throws IOException {
+	public void sendResponse(SocketResponse response) throws IOException {
 		//组装返回消息
 		ByteArray sendBuff = new ByteArray(ByteBufferPool.malloc(ByteBufferPool.MAX_BUFFER_SIZE));
 		try {

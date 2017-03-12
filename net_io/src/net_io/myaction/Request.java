@@ -6,46 +6,33 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import net_io.core.ByteBufferPool;
-import net_io.core.NetChannel;
-import net_io.myaction.server.CommandMsg;
 import net_io.myaction.server.QueryStringParser;
 import net_io.utils.Mixed;
 
 import com.sun.net.httpserver.HttpExchange;
 
 public class Request {
-	public static final int MSG_ID = 0x8301;
-	protected NetChannel channel = null;
-	protected long startTime = 0;
-	private HashMap<Object, Object> attributes = new HashMap<Object, Object>(); 
+	protected long startTime = System.currentTimeMillis(); //开始时间的默认值
+	private Map<String, Object> attributes = new LinkedHashMap<String, Object>(); 
 
-	private String path = null;
-	private InetSocketAddress remoteAddress = null;
-	private String action = null;
-	private InputStream in = null;
-	private String clientIP = null;
-	private String remoteIP = null;
-	private Mixed params = new Mixed();
-	private int requestID = 0;
+	protected String scheme = null;
+	protected String path = null;
+	protected String queryString = null;
+	protected InetSocketAddress remoteAddress = null;
+	protected String action = null;
+	protected InputStream in = null;
+	protected String clientIP = null;
+	protected String remoteIP = null;
+	protected Mixed params = new Mixed();
 	
 	
 	public Request() {
 	}
 
-	public CommandMsg generateCommandMsg() {
-		CommandMsg msg = new CommandMsg(MSG_ID);
-		msg.setPath(path);
-		msg.setRequestID(requestID);
-		msg.resetData(params);
-		return msg;
-	}
-	
-	public int getRequestID() {
-		return requestID;
-	}
 	
 	public void setPath(String path) {
 		this.path = path;
@@ -53,14 +40,6 @@ public class Request {
 	
 	public String getPath() {
 		return path;
-	}
-	
-	public static Request parse(CommandMsg msg) {
-		Request request = new Request();
-		request.path = msg.getPath();
-		request.requestID = msg.getRequestID();
-		request.params = msg.getData();
-		return request;
 	}
 	
 	public static Request parse(HttpExchange httpExchange) {
@@ -78,7 +57,11 @@ public class Request {
 		} else {
 			request.clientIP = request.remoteIP;
 		}
+		request.scheme = uri.getScheme();
 		request.path = uri.getPath();
+		request.queryString = uri.getQuery();
+		
+
 		//parameter
 		try {
 			QueryStringParser.parse(request.params, uri.getQuery());
@@ -103,7 +86,7 @@ public class Request {
 				throw new IOException("[PostLengthException] buffer size: "+buff.limit()+", post length: "+maxLen);
 			}
 			byte[] arr = buff.array();
-			String body = (new String(arr, 0, buff.limit(), "UTF-8")).trim();
+			String body = (new String(arr, 0, buff.limit(), ActionFactory.getDefaultCharset())).trim();
 			//parameter
 			try {
 				QueryStringParser.parse(this.params, body);
@@ -121,6 +104,10 @@ public class Request {
 	
 	public void setParameter(String name, String value) {
 		params.set(name, value);
+	}
+	
+	public String[] getParameterNames() {
+		return params.keys();
 	}
 	
 	public String getAction() {
@@ -152,12 +139,21 @@ public class Request {
 	public String getClientIP() {
 		return clientIP;
 	}
+	
+	public String[] getAttributeNames() {
+		String[] keys = new String[attributes.size()];
+		int offset = 0;
+		for(String key : attributes.keySet()) {
+			keys[offset++] = key;
+		}
+		return keys;
+	}
 
-	public Object getAttribute(Object key) {
+	public Object getAttribute(String key) {
 		return attributes.get(key);
 	}
 
-	public Object setAttribute(Object key, Object value) {
+	public Object setAttribute(String key, Object value) {
 		return attributes.put(key, value);
 	}
 	
@@ -165,10 +161,24 @@ public class Request {
 		return new Session();
 	}
 	
-	public NetChannel getChannel() {
-		return channel;
+	/**
+	 * Returns the query string that is contained in the request URL after the path
+	 */
+	public String getQueryString() {
+		if(queryString == null) {
+			return "";
+		}
+		return queryString;
 	}
-	public void setChannel(NetChannel channel) {
-		this.channel = channel;
+
+	/**
+	 * a String containing the name of the scheme used to make this request
+	 */
+	public String getScheme() {
+		if(scheme == null) {
+			return "";
+		}
+		return scheme;
 	}
+	
 }

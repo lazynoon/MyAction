@@ -43,11 +43,13 @@ public class DateUtils {
 				return new SimpleDateFormat("yyyy-MM-dd").parse(str);
 			} else if(str.length() == 19) {
 				return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(str);
+			} else if(str.length() > 19 && str.indexOf('.') == 19) {
+				return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").parse(str);
 			} else {
-				return null;
+				throw new RuntimeException("DateTime length error. String: "+str);
 			}
 		} catch (ParseException e) {
-			return null;
+			throw new RuntimeException("DateTime parse error. String: "+str+", Exception: "+e);
 		}
 	}
 
@@ -66,7 +68,31 @@ public class DateUtils {
 	public static String getDateTime(Date date) {
 		return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
 	}
+
+	/**
+	 * 获取带毫秒的时间
+	 * @return String
+	 */
+	public static String getDateMicroTime() {
+		return getDateMicroTime(new Date());
+	}
+	
+	/**
+	 * 获取带毫秒的时间
+	 * @param date
+	 * @return String
+	 */
+	public static String getDateMicroTime(Date date) {
+		if(date == null) {
+			return null;
+		}
+		return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(date);
+	}
+
 	public static String format(Date date, String formatStr) {
+		if(date == null) {
+			return null;
+		}
 		return new SimpleDateFormat(formatStr).format(date);
 	}
 }

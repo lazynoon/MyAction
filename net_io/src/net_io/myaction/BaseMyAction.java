@@ -3,21 +3,35 @@ package net_io.myaction;
 
 
 public abstract class BaseMyAction {
-	public Request request;
-	public Response response;
+	protected Request request;
+	protected Response response;
 	
-	public String getModule() { return ""; };
-	public String getAction() { return ""; };
+	private Exception lastActionException = null;
+	/** 模板文件名 **/
+	String tplName = null;
 
-	public void preExecute() throws Exception {
-	}
+	
+	//public String getModule() { return ""; }
+	//public String getAction() { return ""; }
+	
+	protected Exception getLastActionException() { return lastActionException; }
+	protected void setLastActionException(Exception lastActionException) { this.lastActionException = lastActionException; }
 
-	public boolean check() throws Exception {
+	protected void preExecute() throws Exception {}
+
+	protected boolean check() throws Exception {
 		return true;
 	}
 	
 	//User Method
-
-	public void afterExecute() throws Exception {
+	protected void afterExecute() throws Exception {}
+	
+	protected void display(String tplName) {
+		if(tplName != null && tplName.length() == 0) {
+			tplName = null;
+		}
+		this.tplName = tplName;
 	}
+	
+	
 }

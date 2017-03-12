@@ -1,115 +1,32 @@
 package net_io.myaction;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
+import java.net.InetSocketAddress;
 
-import net_io.core.ByteArray;
-import net_io.core.ByteBufferPool;
-import net_io.core.NetChannel;
 import net_io.myaction.ActionFactory.ActionClassMethod;
-import net_io.myaction.server.CommandMsg;
 import net_io.utils.MixedUtils;
 import net_io.utils.NetLog;
 
-import com.sun.net.httpserver.Headers;
-import com.sun.net.httpserver.HttpExchange;
-
-public class ActionProcessor implements Runnable {
+abstract public class ActionProcessor implements Runnable {
 	//按SOCKET接口运行
-	public final int MODE_SOCKET = 1;
+	public static final int MODE_SOCKET = 1;
 	//按HTTP接口运行
-	public final int MODE_HTTP = 2;
+	public static final int MODE_HTTP = 2;
+	//按HTTP接口运行
+	public static final int MODE_SERVLET = 3;
 	//启动的nano time
 	private long startTime = System.currentTimeMillis();
 	//运行模式
-	private int runMode = 0;
-	private NetChannel channel;
-	private CommandMsg msg;
-	private HttpExchange httpExchange;
-	
-	public ActionProcessor(NetChannel channel, CommandMsg msg) {
-		this.runMode = MODE_SOCKET;
-		this.channel = channel;
-		this.msg = msg;
-	}
-	
-	public ActionProcessor(HttpExchange httpExchange) {
-		this.runMode = MODE_HTTP;
-		this.httpExchange = httpExchange;
-	}
+	protected int runMode = 0;
+	private Request currentRequest;
+		
+	abstract protected void processRequest();
 	
 	/**
 	 * 消息处理进程
 	 */
 	public void run() {
-		if(this.runMode == MODE_SOCKET) {
-			this.runAsSocket();
-		} else if(this.runMode == MODE_HTTP) {
-			this.runAsHttp();
-		} else {
-			NetLog.logError("[ActionProcessor] unkwown mode: "+this.runMode);
-		}
-	}
-
-	protected void runAsSocket() {
-		//解析请求消息
-		Request request = Request.parse(msg);
-		Response response = Response.clone(request);
-		request.setChannel(channel);
-		request.startTime = this.startTime;
-		//处理Action请求
-		executeAction(request, response);
-		//输出结果
-		//TODO：错误码机制
-		if(response.isDisabled() == false) {
-			//组装返回消息
-			ByteArray sendBuff = new ByteArray(ByteBufferPool.malloc(ByteBufferPool.MAX_BUFFER_SIZE));
-			try {
-				response.writeSendBuff(sendBuff);
-				//发送消息
-				channel.send(sendBuff.getByteBuffer());;
-			} catch (IOException e) {
-				NetLog.logWarn(e);
-			} finally {
-				ByteBufferPool.free(sendBuff.getByteBuffer()); //发送消息后，立即回收缓存区
-				sendBuff = null;
-			}
-		}
-	}
-	
-	public void runAsHttp() {
-		OutputStream out = httpExchange.getResponseBody(); // 获得输出流
-		InputStream in = httpExchange.getRequestBody();
-		Request request = null;
-		Response response = new Response(httpExchange);
-		try {
-			request = Request.parse(httpExchange);
-			request.startTime = this.startTime;
-			//解析POST对象
-			request.parseBody(MyActionServer.MAX_POST_LENGTH); //Post Max Length: 2M 
-			//处理Action请求
-			executeAction(request, response);
-		} catch (Exception e) {
-			response.setHttpCode(500);
-			response.setError(500, "Internat Server Error!");
-			NetLog.logError(e);
-		} finally {
-			try {
-				in.close(); //关闭输入流
-				byte[] body = response.getBodyBytes();
-				Headers headers = httpExchange.getResponseHeaders();
-				headers.set("Content-Type", "text/html; charset=UTF-8");
-				headers.set("Connection", "close");
-				httpExchange.sendResponseHeaders(response.getHttpCode(), body.length); // 设置响应头属性及响应信息的长度
-				out.write(body);
-			} catch (Exception e) {
-				NetLog.logError(e);
-			} finally {
-				httpExchange.close();
-			}
-		}
+		processRequest();
 	}
 	
 	/**
@@ -117,7 +34,9 @@ public class ActionProcessor implements Runnable {
 	 * @param request
 	 * @param response
 	 */
-	private void executeAction(Request request, Response response) {
+	protected String executeAction(Request request, Response response) {
+		request.startTime = this.startTime; //注入请求时间
+		currentRequest = request; //保存当前请求状态
 		try {
 			//调用业务处理类（Action）
 			ActionClassMethod actionInfo = ActionFactory.get(request.getPath());
@@ -134,11 +53,44 @@ public class ActionProcessor implements Runnable {
 						response.setError(403, "Input check error.");
 					}
 				} catch (CheckException e) {
+					actionObj.setLastActionException(e); //保存最新的Action异常
 					response.setError(e.getError(), e.getReason());
+				} catch (Exception e) {
+					actionObj.setLastActionException(e); //保存最新的Action异常
+					if(e instanceof InvocationTargetException && e.getCause() != null
+							&& MixedUtils.isEmpty(e.getMessage())) {
+						Throwable causeException = e.getCause();
+						if(causeException != null) {
+							if(causeException instanceof CheckException) {
+								CheckException checkE = (CheckException) causeException;
+								response.setError(checkE.getError(), checkE.getReason());
+								actionObj.setLastActionException(checkE); //保存最新的Action异常
+							} else {
+								NetLog.logWarn(e.getCause());
+								String className = causeException.getClass().getName();
+								int pos = className.lastIndexOf('.');
+								if(pos >= 0 && pos+1 < className.length()) {
+									className.substring(pos+1);
+								}
+								response.setError(500, "["+className+"] "+causeException.getMessage());
+								if(causeException instanceof Exception) {
+									actionObj.setLastActionException((Exception)causeException); //保存最新的Action异常
+								}
+							}
+						}
+					} else {
+						NetLog.logWarn(e);
+					}
+					//设置默认报错
+					if(response.getError() == 0) {
+						response.setError(500, e.toString());
+					}
 				} finally {
 					actionObj.afterExecute();
 				}
 				
+				//返回模版文件名称
+				return actionObj.tplName;
 			} else {
 				NetLog.logWarn("Not exists: "+request.getPath());
 				response.setHttpCode(404);
@@ -169,27 +121,47 @@ public class ActionProcessor implements Runnable {
 				}
 				response.setError(500, message);
 			}
-			if(e instanceof InvocationTargetException && e.getCause() != null
-					&& MixedUtils.isEmpty(e.getMessage())) {
-				Throwable causeException = e.getCause();
-				if(causeException != null) {
-					if(causeException instanceof CheckException) {
-						CheckException checkE = (CheckException) e.getCause();
-						response.setError(checkE.getError(), checkE.getReason());
-					} else {
-						NetLog.logWarn(e.getCause());
-						String className = causeException.getClass().getName();
-						int pos = className.lastIndexOf('.');
-						if(pos >= 0 && pos+1 < className.length()) {
-							className.substring(pos+1);
-						}
-						response.setError(500, "["+className+"] "+causeException.getMessage());
-					}
-				}
-			} else {
-				NetLog.logWarn(e);
+			NetLog.logWarn(e);
+		} finally {
+			currentRequest = null; //清除当前请求状态
+		}
+		//默认不指定模版文件
+		return null;
+	}
+	
+	public ProcessorInfo getProcessorInfo() {
+		return new ProcessorInfo(currentRequest);
+	}
+	
+	public class ProcessorInfo {
+		private String path = null;
+		private InetSocketAddress remoteAddress = null;
+		private ProcessorInfo(Request request) {
+			if(request != null) {
+				path = request.getPath();
+				remoteAddress = request.getRemoteAddress();
 			}
 		}
+		public String getRunMode() {
+			if(runMode == MODE_SOCKET) {
+				return "SOCKET";
+			} else if(runMode == MODE_HTTP) {
+				return "HTTP";
+			} else if(runMode == MODE_SERVLET) {
+				return "SERVLET";
+			} else {
+				return "UNKNOWN";
+			}
+		}
+		
+		public String getPath() {
+			return path;
+		}
+		
+		public InetSocketAddress getRemoteAddress() {
+			return remoteAddress;
+		}
+
 		
 	}
 	

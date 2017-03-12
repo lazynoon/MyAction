@@ -1,111 +1,121 @@
 package net_io.core;
 
 import java.io.IOException;
+import java.net.ConnectException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
+import net_io.core.AsyncBaseSocket.EventUpdate;
+import net_io.core.AsyncBaseSocket.EventUpdate.MODE;
 import net_io.utils.DateUtils;
 import net_io.utils.NetLog;
 
 public class NetChannel {
 	public enum CONFIG { CLOSE_WAIT_TIME, CONNECT_TIMEOUT, IDLE_TIMEOUT }
 	
-	// 默认值：连接准备最后关闭的时间
+	/** 默认值：连接准备最后关闭的时间 **/
 	final public static int DEFAULT_CLOSE_WAIT_TIME = 3*1000;
 	
-	// 默认值：连接超时时间
+	/** 默认值：连接超时时间 **/
 	final public static int DEFAULT_CONNECT_TIMEOUT = 120*1000;
 
-	// 默认值：空闲超时时间
-	final public static int DEFAULT_IDLE_TIMEOUT = 7200 * 1000;
+	/** 默认值：空闲超时时间 **/
+	final public static int DEFAULT_IDLE_TIMEOUT = 7200 * 1000; //
 	
-	// 关闭状态停留时间（NetChannelPool.ManagerThread需要访问）
+	/** 关闭状态停留时间（NetChannelPool.ManagerThread需要访问） **/
 	protected int closeWaitTime = DEFAULT_CLOSE_WAIT_TIME;
 	
-	// 连接超时时间
-	private int connectTimeout = DEFAULT_CONNECT_TIMEOUT;
+	/** 连接超时时间 **/
+	private long connectTimeout = DEFAULT_CONNECT_TIMEOUT;
 	
-	// 通道ID。注册到Pool时更新（累计）
+	/** 通道ID。注册到Pool时更新（累计） **/
 	protected long ID = 0;
 	
-	// 空闲超时时间
+	/** 空闲超时时间 **/
 	private int idleTimeout = DEFAULT_IDLE_TIMEOUT;
 	
-	// 默认值：拥塞超时时间（暂定）
+	/** 默认值：拥塞超时时间（暂定） **/
 //	final public static int DEFAULT_IDLE_TIME = 7200;
 	
-	// 是否遇到了连接超时
+	/** 是否遇到了连接超时 **/
 	private boolean isConnectTimeout = false;
 	
-	// 等待连接完成的信号
-	private Boolean waitConnectSingle = null;
+	/** 等待连接完成的信号 **/
+	private Object waitConnectSingle = new Object();
 	
-	// 通道创建时间
-	protected long channelCreateTime = 0;
+	/** 通道创建时间 **/
+	private long channelCreateTime = System.currentTimeMillis();
 	
-	// 最后活跃时间：产生（或准备）网络IO的时间
+	/** 最后活跃时间：产生（或准备）网络IO的时间 **/
 	protected long lastAliveTime = 0;
 	
-	//关闭时间（关闭后，等待 CLOSE_WAIT_TIME 之后，将从Pool中清除）
-	private long closeTime = 0;
+	/** 最后的IO异常 **/
+	protected IOException lastIOException = null;
 	
-	// 状态：INIT（初始，刚创建）；CONNECT（发起连接）；ESTABLISHED（连接已建立）；CLOSE_WAIT（连接等待关闭）。
-	protected enum Status{INIT, CONNECT, ESTABLISHED, CLOSE_WAIT, CLOSED}; // CLOSED 从Pool中直接删除，在应用类中，可用来检查状态
+//	/** 关闭时间（关闭后，等待 CLOSE_WAIT_TIME 之后，将从Pool中清除） **/
+//	private long closeTime = 0;
 	
-	// 发送队列
+	/** 状态：INIT（初始，刚创建）；CONNECT（发起连接）；ESTABLISHED（连接已建立）；CLOSE_WAIT（连接等待关闭）。 **/
+	public enum Status{INIT, CONNECT, ESTABLISHED, CLOSE_WAIT, CLOSED}; // CLOSED 从Pool中直接删除，在应用类中，可用来检查状态
+	
+	/** 发送队列 **/
 	private ConcurrentLinkedQueue<ByteBuffer> sendQueue = new ConcurrentLinkedQueue<ByteBuffer>();
 	
-	//正在发送中的 ByteBuffer
+	/** 正在发送中的 ByteBuffer **/
 	private ByteBuffer sendingBuff = null;
 	
-	//接收缓存区。不为null，则表示正在取数据，且未取满一个包
+	/** 接收缓存区。不为null，则表示正在取数据，且未取满一个包 **/
 	protected ByteBuffer recvBuff = null;
 	
-	// 网络通道的状态
+	/** 网络通道的状态 **/
 	protected Status status = Status.INIT;
 	
-	// 异步 Socket 管理对象
+	/** 异步 Socket 管理对象 **/
 	protected AsyncBaseSocket asyncSocket;
 	
-	// 对应到 NIO 中的 Channel
+	/** 对应到 NIO 中的 Channel **/
 	protected SocketChannel socket;
 	
 	protected AsyncBaseSocket.ChannelRegisterHandle channelRegisterHandle = null;
-	// 是否为服务器端的 Channel
+	/** 是否为服务器端的 Channel **/
 	protected boolean serverSide = false;
 	
-	// 自增长序列号（调用时有效）
-	private AtomicInteger sequenceID = new AtomicInteger(0);
+	/** 自增长序列号（调用时有效） **/
+	private AtomicLong sequenceID = new AtomicLong(0);
 	
-	// 响应内容缓存池
+	/** 响应内容缓存池 **/
 	private HashMap<Integer, ResponseContainer> responsePool = new HashMap<Integer, ResponseContainer>();
 	
-	// NetChannelPool管理队列：前一个 NetChannel
+	/** NetChannelPool管理队列：前一个 NetChannel **/
 	protected NetChannel prev = null;
 	
-	// NetChannelPool管理队列：下一个 NetChannel
+	/** NetChannelPool管理队列：下一个 NetChannel **/
 	protected NetChannel next = null;
 
 	/**
 	 * 作为队列的节点，创建对象
 	 */
 	protected NetChannel() {
-		
 	}
+	
 	/**
 	 * 创建网络通道
 	 * @param asyncSocket 异步Socket管理对象
 	 * @param socket 
 	 */
-	public NetChannel(AsyncBaseSocket asyncSocket, SocketChannel socketChannel) {
+	protected NetChannel(AsyncBaseSocket asyncSocket, SocketChannel socketChannel) {
 		this.lastAliveTime = this.channelCreateTime = System.currentTimeMillis();
 		this.asyncSocket = asyncSocket;
 		this.socket = socketChannel;
+		this.lastIOException = null;
 	}
 	
 	/**
@@ -134,24 +144,45 @@ public class NetChannel {
 	
 	/**
 	 * 等待连接完成
-	 * @param timeout 连接超时时间
-	 * @return true 为连接成功
+	 * @param timeout 连接超时时间（单位：微秒）
+	 * @return true 连接成功， false连接超时
+	 * @throws ConnectException 连接失败异常
 	 */
-	public boolean waitConnect(int timeout) {
+	public boolean waitConnect(long timeout) throws ConnectException {
 		if(status != Status.CONNECT) {
-			return status == Status.ESTABLISHED;
+			return _returnWaitConnect();
 		}
 		connectTimeout = timeout;
-		waitConnectSingle = new Boolean(true);
 		synchronized(waitConnectSingle) {
+			if(status != Status.CONNECT) {
+				return _returnWaitConnect();
+			}
 			try {
 				waitConnectSingle.wait(timeout);
-				//TODO: 判断失败类型
-				return status == Status.ESTABLISHED;
 			} catch (InterruptedException e) {
-				return status == Status.ESTABLISHED;
+				//ignore this exception
 			}
+			return _returnWaitConnect();
 		}
+	}
+	
+	/**
+	 * 返回waitConnect的结果
+	 * @return true 连接成功， false连接超时
+	 * @throws ConnectException 连接失败
+	 */
+	private boolean _returnWaitConnect() throws ConnectException {
+		if(status == Status.ESTABLISHED) {
+			return true;
+		}
+		IOException e = lastIOException;
+		if(e == null) {
+			return false;
+		}
+		if(e instanceof ConnectException) {
+			throw (ConnectException) e;
+		}
+		return false;
 	}
 	
 	/**
@@ -169,6 +200,25 @@ public class NetChannel {
 	}
 	
 	/**
+	 * 获取远端网络地址
+	 * 仅支持 Internet Protocol。
+	 * @return 成功返回 InetSocketAddress，除此之外，全部返回null
+	 */
+	public InetSocketAddress getRemoteAddress() {
+		if(socket != null) {
+			try {
+				SocketAddress address = socket.getRemoteAddress();
+				if(address instanceof InetSocketAddress) {
+					return (InetSocketAddress) address; 
+				}
+			} catch (IOException e) {
+				//取不到远端网络地址，全部返回null
+			}
+		}
+		return null;
+	}
+	
+	/**
 	 * net_io 核心调用：连接中
 	 */
 	protected void _gotoConnect() {
@@ -182,11 +232,9 @@ public class NetChannel {
 	protected void _gotoEstablished() {
 		status = Status.ESTABLISHED;
 		this.lastAliveTime = System.currentTimeMillis();
-		if(waitConnectSingle != null) {
-			synchronized(waitConnectSingle) {
-				waitConnectSingle.notify();
-				waitConnectSingle = null;
-			}
+		synchronized(waitConnectSingle) {
+			waitConnectSingle.notify();
+			//waitConnectSingle = null;
 		}
 	}
 	
@@ -198,11 +246,9 @@ public class NetChannel {
 //		closeTime = System.currentTimeMillis();
 		responsePool = new HashMap<Integer, ResponseContainer>();
 		this.lastAliveTime = System.currentTimeMillis();
-		if(waitConnectSingle != null) {
-			synchronized(waitConnectSingle) {
-				waitConnectSingle.notify();
-				waitConnectSingle = null;
-			}
+		synchronized(waitConnectSingle) {
+			waitConnectSingle.notify();
+			//waitConnectSingle = null;
 		}
 	}
 	
@@ -225,6 +271,10 @@ public class NetChannel {
 		return socket.socket().getLocalPort();
 	}
 	
+	public long getCreateTime() {
+		return channelCreateTime;
+	}
+	
 	protected ByteBuffer _getSendBuff() {
 		if(sendingBuff == null || sendingBuff.hasRemaining() == false) {
 			sendingBuff = sendQueue.poll();
@@ -235,6 +285,34 @@ public class NetChannel {
 	public void send(ByteBuffer buff) throws IOException {
 		buff.rewind();
 		_send(buff);
+	}
+	
+	/**
+	 * 暂停读取
+	 * @throws IOException 
+	 */
+	public void pauseRead() throws IOException {
+		SelectionKey key = socket.keyFor(asyncSocket.selector);
+		if(key == null) {
+			throw new IOException("Can not find the SelectionKey.");
+		}
+		key.interestOps(key.interestOps() & ~SelectionKey.OP_READ); //监听写事件
+	}
+	
+	/**
+	 * 重新读取
+	 * @throws IOException 
+	 */
+	public void resumeRead() throws IOException {
+		SelectionKey key = socket.keyFor(asyncSocket.selector);
+		if(key == null) {
+			throw new IOException("Can not find the SelectionKey.");
+		}
+		key.interestOps(key.interestOps() | SelectionKey.OP_READ); //监听写事件		
+	}
+	
+	public int getSendQueueSize() {
+		return sendQueue.size();
 	}
 	
 	protected void _send(ByteBuffer buff) throws IOException {
@@ -252,7 +330,8 @@ public class NetChannel {
 			//TODO: 其它错误检查，处理
 			//throw new IOException("channel is not open. Socket is registered: "+socket.isRegistered()+", is open: "+socket.isOpen());
 		}
-		key.interestOps(key.interestOps() | SelectionKey.OP_WRITE); //监听写事件
+		//key.interestOps(key.interestOps() | SelectionKey.OP_WRITE); //监听写事件
+		asyncSocket.eventUpdateQueue.offer(new EventUpdate(key, SelectionKey.OP_WRITE, MODE.OR));
 		asyncSocket.selector.wakeup();
 	}
 	
@@ -267,14 +346,59 @@ public class NetChannel {
 	}
 	
 	/**
+	 * 关闭连接
+	 */
+	public void closeAndSendRemaining() {
+		if(status == Status.CLOSE_WAIT || status == Status.CLOSED) {
+			return; //Channel已经关闭，则直接退出
+		}
+		
+		//取消读取时间
+		SelectionKey key = socket.keyFor(asyncSocket.selector);
+		if(key == null) {
+			return; //发起连接后，立即发消息，导致 channel 未注册
+			//TODO: 其它错误检查，处理
+			//throw new IOException("channel is not open. Socket is registered: "+socket.isRegistered()+", is open: "+socket.isOpen());
+		}
+//		if(sendQueue.isEmpty() && (sendingBuff == null || sendingBuff.hasRemaining() == false)) {
+//			asyncSocket.closeChannel(this);
+//			return;
+//		}
+		//去除读取监听事件
+		key.interestOps(key.interestOps() & ~SelectionKey.OP_READ);
+		final NetChannel that = this;
+		new Thread() {
+			public void run() {
+				for(int i=0; i<600; i++) {
+					try {
+						Thread.sleep(100);
+					} catch (InterruptedException e) {
+						NetLog.logDebug(e);
+					}
+					if(sendQueue.isEmpty() && (sendingBuff == null || sendingBuff.hasRemaining() == false)) {
+						break;
+					}
+				}
+				asyncSocket.closeChannel(that);
+			}
+		}.start();
+	}
+	
+	/**
 	 * 连接被关闭了。由底层调用
 	 */
 	protected void closed() {
 		synchronized(responsePool) {
+			ArrayList<Integer> keys = new ArrayList<Integer>();
 			for(Integer objID : responsePool.keySet()) {
-				responsePool.get(objID).notifyAll();;
+				keys.add(objID);
 			}
-			responsePool = new HashMap<Integer, ResponseContainer>();
+			for(Integer objID : keys) {
+				ResponseContainer container = responsePool.remove(objID);
+				synchronized(container) {
+					container.notifyAll();
+				}
+			}
 		}
 	}
 
@@ -298,7 +422,7 @@ public class NetChannel {
 	 * 生成并返回，自增长序列号（int类型，可以为负数）
 	 */
 	public int generateSequenceID() {
-		return sequenceID.incrementAndGet();
+		return (int) sequenceID.incrementAndGet();
 	}
 	
 	/**
@@ -312,31 +436,37 @@ public class NetChannel {
 		ResponseContainer container = null;
 		Integer objID = new Integer(sequenceID);
 		//从 responsePool 中取消息，取不到时自动创建
-		synchronized(responsePool) {
-			container = responsePool.get(objID);
-			if(container == null) {
-				container = new ResponseContainer();
-				
-				container.expireTime = System.currentTimeMillis() + timeout * 1000;
-				waitFlag = true;
-				responsePool.put(objID, container);
+		try {
+			synchronized(responsePool) {
+				container = responsePool.get(objID);
+				if(container == null) {
+					container = new ResponseContainer();
+					
+					container.expireTime = System.currentTimeMillis() + timeout * 1000;
+					waitFlag = true;
+					responsePool.put(objID, container);
+				}
 			}
-		}
-		//等待响应容器返回
-		if(waitFlag && timeout > 0) {
-			synchronized(container) {
-				if(container.data == null) {
-					try {
-						container.wait(timeout);
-					} catch (InterruptedException e) {
-						NetLog.logWarn(e);
+			//等待响应容器返回
+			if(waitFlag && timeout > 0) {
+				synchronized(container) {
+					if(container.data == null) {
+						try {
+							if(this.status != Status.INIT && this.status != Status.CONNECT && this.status != Status.ESTABLISHED) {
+								return null; //未连接
+							}
+							container.wait(timeout);
+						} catch (InterruptedException e) {
+							NetLog.logWarn(e);
+						}
 					}
 				}
 			}
-		}
-		//从 responsePool 移除消息监听
-		synchronized(responsePool) {
-			responsePool.remove(objID);
+		} finally {
+			//从 responsePool 移除消息监听
+			synchronized(responsePool) {
+				responsePool.remove(objID);
+			}
 		}
 		return container.data;
 	}

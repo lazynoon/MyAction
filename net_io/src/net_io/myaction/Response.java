@@ -2,32 +2,40 @@ package net_io.myaction;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
-import net_io.core.ByteArray;
 import net_io.myaction.server.CommandMsg;
 import net_io.utils.Mixed;
 
 import com.sun.net.httpserver.HttpExchange;
 
 public class Response {
-	public static final int MSG_ID = 0x8302;
 	public static enum MODE{DEFAULT, JSON, TEXT};
-	private Mixed data = null;
-	private CommandMsg msg = null;
+	protected Mixed data = null;
 	//是否禁止响应
 	private boolean disabled = false;
-	private StringBuffer body = new StringBuffer();
-	private int error = 0;
-	private String reason = "";
+	protected StringBuffer body = new StringBuffer();
+	protected int error = 0;
+	protected String reason = "";
 	private int httpCode = 200;
 	private MODE mode = MODE.DEFAULT;
 	private HttpExchange httpExchange;
-	private String charset = "UTF-8";
+	private String charset = ActionFactory.getDefaultCharset();
 	protected int requestID = 0;
 	protected String path = null;
+	/** 头部参数名列表（KEY对应的原始名称） **/
+	protected Map<String, String> headerNames = new LinkedHashMap<String, String>();
+	/** 头部参数值列表（KEY为小写字母） **/
+	protected Map<String, String> headers = new HashMap<String, String>();
 	
+	public Response() {
+		setHeader("Content-Type", "text/html; charset="+charset);
+	}
 	public Response(HttpExchange httpExchange) {
 		this.httpExchange = httpExchange;
+		setHeader("Content-Type", "text/html; charset="+charset);
 	}
 	
 	public void print(String str) {
@@ -75,16 +83,57 @@ public class Response {
 	public Mixed getData() {
 		return data;
 	}
+	public Mixed getData(boolean getInnerData) {
+		return data.get("data");
+	}
 	public static Response parse(CommandMsg msg) {
 		Response response = new Response();
 		response.path = msg.getPath();
 		response.requestID = msg.getRequestID();
 		response.data = msg.getData();
-		response.error = response.data.getInt("error");
-		response.reason = response.data.getString("reason");
+		if(response.data != null) {
+			response.error = response.data.getInt("error");
+			response.reason = response.data.getString("reason");
+		}
 		return response;
 	}
 	
+	/**
+	 * 发送头部参数
+	 */
+	public void setHeader(String name, String value) {
+		if(name == null || name.length() == 0) {
+			return;
+		}
+		String key = name.toLowerCase();
+		headerNames.put(key, name);
+		headers.put(key, value);
+	}
+	
+	/**
+	 * 获取头部参数的值
+	 */
+	public String getHeader(String name) {
+		if(name == null || name.length() == 0) {
+			return null;
+		}
+		String key = name.toLowerCase();
+		return headers.get(key);
+	}
+	
+	/**
+	 * 获取所有头部的名称
+	 * @return 非null值
+	 */
+	public String[] getHeaderNames() {
+		String[] names = new String[headerNames.size()];
+		int offset = 0;
+		for(String key : headerNames.keySet()) {
+			names[offset++] = headerNames.get(key);
+		}
+		return names;
+	}
+		
 	public byte[] getBodyBytes() throws UnsupportedEncodingException, IOException {
 		String str;
 		if(mode == MODE.JSON) {
@@ -136,10 +185,6 @@ public class Response {
 		this.reason = reason;
 	}
 	
-	public Response() {
-		msg = new CommandMsg(MSG_ID);
-	}
-		
 	public boolean isDisabled() {
 		return disabled;
 	}
@@ -172,40 +217,20 @@ public class Response {
 		data.set(key, value);
 	}
 	
-	public static Response clone(Request request) {
-		Response response = new Response();
-		response.msg.setPath(request.getPath());
-		response.msg.setRequestID(request.getRequestID());
-		return response;
-	}
-	
-	public int getRequestID() {
-		return msg == null ? 0 : msg.getRequestID();
-	}
-	
+
 	public String getPath() {
-		return msg == null ? null : msg.getPath();
+		return "-";
 	}
 	
 	public String toString() {
 		return getPath() + " DATA " + data;
 	}
 	
-	protected void writeSendBuff(ByteArray sendBuff) throws IOException {
-		if(msg == null) {
-			throw new IOException("[MyAction] The response is not open with SOCKET mode.");
-		}
-		Mixed result = new Mixed();
-		result.set("error", error);
-		result.set("reason", reason);
-		if(data != null) {
-			result.set("data", data);
-		}
-		if(body.length() > 0) {
-			result.set("body", body.toString());
-		}
-		msg.resetData(result);
-		msg.writeData(sendBuff);
-		msg.finishWrite(sendBuff);
-	}
+	/**
+	 * header location跳转
+	 * @param url
+	 */
+//	public void sendRedirect(String url) {
+//		
+//	}
 }

@@ -13,7 +13,7 @@ import org.w3c.dom.Document;
 
 
 public class Mixed {
-	public static enum ENTITY_TYPE{NULL, STRING, LIST, MAP, MIXED, PRIMITIVE};
+	public static enum ENTITY_TYPE{NULL, STRING, LIST, MAP, MIXED, BYTES, PRIMITIVE};
 	private Object data = null;
 	private List<String> sequence = null;
 	
@@ -35,15 +35,17 @@ public class Mixed {
 			return ENTITY_TYPE.MAP;
 		} else if(data instanceof TYPE) {
 			return ENTITY_TYPE.MIXED;
+		} else if(data instanceof byte[]) {
+			return ENTITY_TYPE.BYTES;
 		} else {
 			return ENTITY_TYPE.STRING;
 		}
 		
 	}
 	
-	public String getString() {
-		return toString();
-	}
+//	public String getString() {
+//		return toString();
+//	}
 	
 	/**
 	 * 获取字符串的值。默认为空字符串
@@ -181,7 +183,13 @@ public class Mixed {
 //		return data;
 //	}
 	
-	@SuppressWarnings("unchecked")
+	/**
+	 * 获取Mixed对象中的核心Object对象
+	 * @return 原始的Object对象（可为null）
+	 */
+	public Object getCoreObject() {
+		return data;
+	}
 	public Mixed get(String key) {
 		Mixed ret = _get(key);
 		if(ret == null) ret = new Mixed();
@@ -197,7 +205,6 @@ public class Mixed {
 		return ret;
 	}
 	
-	@SuppressWarnings("unchecked")
 	public Mixed get(int index) {
 		Mixed ret = _get(index);
 		if(ret == null) ret = new Mixed();
@@ -244,6 +251,9 @@ public class Mixed {
 		} else if(value instanceof Boolean || value instanceof Integer || value instanceof Long || value instanceof Float || value instanceof Double) {
 			data = value;
 			sequence = null;
+		} else if(value instanceof byte[]) {
+			data = value;
+			sequence = null;
 		} else if(value instanceof Object[]) {
 			data = new ArrayList<Mixed>();
 			sequence = null;
@@ -279,9 +289,12 @@ public class Mixed {
 		return this;
 	}
 	
+	public Mixed put(String key, Object value) {
+		return set(key, value);
+	}
 	@SuppressWarnings("unchecked")
 	public Mixed set(String key, Object value) {
-		if(value == null) return this;
+		//null也占KEY键。if(value == null) return this;
 		if(data == null || !(data instanceof Map<?, ?>)) {
 			data = new HashMap<String, Mixed>();
 			sequence = new ArrayList<String>();

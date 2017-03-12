@@ -18,9 +18,10 @@ public class MixedUtils {
 	 * @return short
 	 */
 	public static short parseShort(String str) {
-		if(str == null || str.length() == 0  || str.length() > 5) return 0;
+		if(str == null || str.length() == 0  || str.length() > 6) return 0;
 		for(int i=0; i<str.length(); i++) {
-			if(str.charAt(i) < '0' || str.charAt(i) > '9') return 0;
+			char ch = str.charAt(i);
+			if(ch != '-' && (ch < '0' || ch > '9')) return 0;
 		}
 		return Short.parseShort(str);
 	}
@@ -31,9 +32,10 @@ public class MixedUtils {
 	 * @return intval
 	 */
 	public static int parseInt(String str) {
-		if(str == null || str.length() == 0  || str.length() > 10) return 0;
+		if(str == null || str.length() == 0  || str.length() > 11) return 0;
 		for(int i=0; i<str.length(); i++) {
-			if(str.charAt(i) < '0' || str.charAt(i) > '9') return 0;
+			char ch = str.charAt(i);
+			if(ch != '-' && (ch < '0' || ch > '9')) return 0;
 		}
 		return Integer.parseInt(str);
 	}
@@ -44,9 +46,10 @@ public class MixedUtils {
 	 * @return longval
 	 */
 	public static long parseLong(String str) {
-		if(str == null || str.length() == 0  || str.length() > 20) return 0;
+		if(str == null || str.length() == 0  || str.length() > 21) return 0;
 		for(int i=0; i<str.length(); i++) {
-			if(str.charAt(i) < '0' || str.charAt(i) > '9') return 0;
+			char ch = str.charAt(i);
+			if(ch != '-' && (ch < '0' || ch > '9')) return 0;
 		}
 		return Long.parseLong(str);
 	}
@@ -79,7 +82,8 @@ public class MixedUtils {
 				if(pointPos >= 0) return false; //已经出现了一个"."
 				else continue;
 			}
-			if(str.charAt(i) < '0' || str.charAt(i) > '9') return false;
+			char ch = str.charAt(i);
+			if(ch != '-' && (ch < '0' || ch > '9')) return false;
 		}
 		if(pointPos == 0 || pointPos == str.length()-1) return false; //"."出现在第一位，或者是末尾都是不对的
 		return true;

@@ -3,7 +3,7 @@ package net_io.core;
 import java.net.ServerSocket;
 
 public abstract class AsyncSocketProcessor {
-	public boolean acceptPrecheck(ServerSocket socket) throws Exception {
+	public boolean acceptPrecheck(AsyncBaseSocket that, ServerSocket socket) throws Exception {
 		return true;
 	}
 	
