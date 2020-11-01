@@ -4,6 +4,7 @@ import java.io.IOException;
 
 import net_io.core.ByteArray;
 import net_io.core.NetChannel;
+import net_io.core.WebSocketChannel;
 import net_io.myaction.ActionProcessor;
 import net_io.myaction.server.CommandMsg;
 import net_io.utils.NetLog;
@@ -13,7 +14,8 @@ public class SocketActionProcessor extends ActionProcessor {
 	private CommandMsg msg;
 	private boolean websocketMode = false;
 	//WebSocket模式下专有参数
-	private WebSocket websocket = null;
+	private MyWebSocket websocket = null;
+	private WebSocketChannel wsChannel = null;
 	private String sid = null;
 	private String buff = null;
 	
@@ -25,10 +27,11 @@ public class SocketActionProcessor extends ActionProcessor {
 		websocketMode = false;
 	}
 	
-	public SocketActionProcessor(WebSocket websocket, String sid, String buff) {
+	public SocketActionProcessor(MyWebSocket websocket, WebSocketChannel channel, String buff) {
 		websocketMode = true;
 		this.websocket = websocket;
-		this.sid = sid;
+		this.wsChannel = channel;
+		this.sid = channel.getSid();
 		this.buff = buff;
 	}
 	

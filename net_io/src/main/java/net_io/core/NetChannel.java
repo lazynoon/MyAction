@@ -109,7 +109,7 @@ public class NetChannel {
 	/**
 	 * 创建网络通道
 	 * @param asyncSocket 异步Socket管理对象
-	 * @param socket 
+	 * @param socketChannel
 	 */
 	protected NetChannel(AsyncBaseSocket asyncSocket, SocketChannel socketChannel) {
 		this.channelCreateTime = System.currentTimeMillis();

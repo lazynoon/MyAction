@@ -17,8 +17,10 @@
  */
 package net_io.utils;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
@@ -26,32 +28,41 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
-
-import sun.misc.BASE64Decoder;
-import sun.misc.BASE64Encoder;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 public class EncodeUtils {
+
 	/** 支持http协议 **/
-	private static byte[] encode64Map = toBytesUTF8("-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
-	private static final byte[] decode64Map = new byte[127];
-	private static byte[] encode32Map = toBytesUTF8("0123456789abcdefghjkmnpqrstuvxyz");
+	private static byte[] encodeHttp64Map = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".getBytes(Charsets.UTF_8);
+	private static final byte[] decodeHttp64Map = new byte[127];
+	private static byte[] encodeBase64Map = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".getBytes(Charsets.UTF_8);
+	private static final byte[] decodeBase64Map = new byte[127];
+	private static final byte base64BackfillChar = '=';
+	private static byte[] encode32Map = "0123456789abcdefghjkmnpqrstuvxyz".getBytes(Charsets.UTF_8);
 	private static final byte[] decode32Map = new byte[127];
 	private static int[] bitMask = {0, 1, 3, 7, 15, 31, 63, 127};
 	private static AtomicLong autoIncrement = new AtomicLong(0);
 	
 	static {
-		for(int i=0; i<decode64Map.length; i++) {
-			decode64Map[i] = -1;
+		for(int i=0; i<decodeHttp64Map.length; i++) {
+			decodeHttp64Map[i] = -1;
 		}
-		for(int i=0; i<encode64Map.length; i++) {
-			decode64Map[encode64Map[i]] = (byte)i;
+		for(int i=0; i<encodeHttp64Map.length; i++) {
+			decodeHttp64Map[encodeHttp64Map[i]] = (byte)i;
+		}
+		for(int i=0; i<decodeBase64Map.length; i++) {
+			decodeBase64Map[i] = -1;
+		}
+		for(int i=0; i<encodeBase64Map.length; i++) {
+			decodeBase64Map[encodeBase64Map[i]] = (byte)i;
 		}
 		for(int i=0; i<decode32Map.length; i++) {
 			decode32Map[i] = -1;
 		}
 		for(int i=0; i<encode32Map.length; i++) {
 			decode32Map[encode32Map[i]] = (byte)i;
-		}		
+		}
 	}
 	
 	/** MD5使用的16字节表示字符 **/
@@ -77,30 +88,35 @@ public class EncodeUtils {
 			throw new IllegalArgumentException(e);
 		}
 	}
+
+	/**
+	 * 检查类是否存在（不初始化类的静态属性）
+	 */
+	public static boolean isClassExist(String className) {
+		try {
+			Thread.currentThread().getContextClassLoader().loadClass(className);
+			return true;
+		} catch (ClassNotFoundException e) {
+			return false;
+		}
+	}
+
 	
 	/**
 	 * 预知可靠byte[]数据流量，按UTF-8编码转换为String
 	 */
 	public static String toStringUTF8(byte[] bts) {
 		if(bts == null) return null;
-		try {
-			return new String(bts, "UTF-8");
-		} catch (UnsupportedEncodingException e) {
-			throw new RuntimeException(e);
-		}
+		return new String(bts, Charsets.UTF_8);
 	}
 
-	/**
-	 * 预知可靠String类型，按UTF-8编码转换为byte[]数据流
-	 */
-	public static byte[] toBytesUTF8(String str) {
-		if(str == null) return null;
-		try {
-			return str.getBytes("UTF-8");
-		} catch (UnsupportedEncodingException e) {
-			throw new RuntimeException(e);
-		}
-	}
+//	/**
+//	 * 预知可靠String类型，按UTF-8编码转换为byte[]数据流
+//	 */
+//	public static byte[] toBytesUTF8(String str) {
+//		if(str == null) return null;
+//		return str.getBytes(CHARSETS.UTF_8);
+//	}
 
 	/**
 	 * int类型转换为byte[]类型（高位在前）
@@ -151,8 +167,11 @@ public class EncodeUtils {
 	}
 	
 	public static long parseRandTime(String randId) {
+		if(randId == null) {
+			return 0;
+		}
 		int[] ret = new int[2];
-		byte[] buff = decodeHttp64(toBytesUTF8(randId));
+		byte[] buff = decodeHttp64(randId.getBytes(Charsets.UTF_8));
 		ret[0] = EncodeUtils.bytesToInt(buff, 0);
 		ret[1] = EncodeUtils.bytesToInt(buff, 4);
 		long time = ((long)ret[0] & 0xFFFFFFFFL) * 1000;
@@ -160,90 +179,75 @@ public class EncodeUtils {
 		return time;
 	}
 
-	/**
-	 * 转换bigint为12字节的字符串
-	 * @param unknown $bigintArr 格式为 array(int, int)
-	 * @param unknown $fixnum 值范围[0-255]。超出此范围，则随机取值
-	 * @return string
-	 */
-	public static byte[] encodeHttp64(byte[] bts) {
+	/** 随机数填充 **/
+	public static void fillRandomNumber(byte[] bts) {
 		if(bts == null) {
-			return null;
+			return;
 		}
-		int buffSize = bts.length * 4 / 3;
-		if(bts.length * 4 % 3 > 0) {
-			buffSize++;
-		}
-		int offset = 0;
-		byte[] buff = new byte[buffSize];
-		int prevBitCount = 0;
-		int prevBitNum = 0;
+		int randNum = (int)(Math.random() * Integer.MAX_VALUE);
 		for(int i=0; i<bts.length; i++) {
-			int nextBitCount = 2 + prevBitCount;
-			int nextBitNum = bts[i] & bitMask[nextBitCount];
-			int index = (bts[i] >>> (2 + prevBitCount)) & bitMask[6-prevBitCount];
-			index |= prevBitNum << (6 - prevBitCount);
-			buff[offset++] = encode64Map[index];
-			if(nextBitCount >= 6) {
-				buff[offset++] = encode64Map[nextBitNum];
-				prevBitCount = 0;
-				prevBitNum = 0;
-			} else {
-				prevBitCount = nextBitCount;
-				prevBitNum = nextBitNum;				
-			}
+			randNum ^= ((int)(Math.random() * 0xFFFF)) | System.nanoTime();
+			bts[i] = (byte)(randNum & 0xFF);
 		}
-		if(prevBitCount > 0) {
-			buff[offset++] = encode64Map[prevBitNum];
-		}
-		return buff;
 	}
 
-	public static byte[] decodeHttp64(byte[] bts) {
+	/** 支持HTTP协议的base64编码（字符升序，扩展字符用用".-"代替） **/
+	public static byte[] encodeHttp64(byte[] bts) {
+		return _encodeBase64(encodeHttp64Map, bts, false);
+	}
+
+	/** 支持HTTP协议的base64编码（字符升序，扩展字符用用".-"代替）**/
+	public static String encodeHttp64ToString(byte[] bts) {
+		bts = _encodeBase64(encodeHttp64Map, bts, false);
 		if(bts == null) {
 			return null;
 		}
-		int buffSize = bts.length * 3 / 4;
-		int mode = bts.length % 4;
-		int lastBitCount = 0;
-		int lastPosition = bts.length - 1;
-		if(mode > 0) {
-			if(mode == 3) {
-				lastBitCount = 4;
-			} else {
-				lastBitCount = 2;
-			}
-		}
-		byte[] buff = new byte[buffSize]; //创建buff
-		int offset = 0;
-		int prevBitCount = 0;
-		for(int i=0; i<bts.length; i++) {
-			int ch = bts[i] & 0xFF;
-			int num = 0; //默认为0
-			if(ch < decode64Map.length && decode64Map[ch] > 0) {
-				num = decode64Map[ch];
-			}
-			if(prevBitCount == 0) {
-				buff[offset] = (byte) (num << 2);
-				prevBitCount = 2;
-			} else if(prevBitCount == 6) {
-				buff[offset++] |= (byte)num;
-				prevBitCount = 0;
-			} else if(i == lastPosition && lastBitCount > 0) {
-				buff[offset++] |= num & bitMask[lastBitCount];
-			} else {
-				buff[offset++] |= (byte) (num >>> (6-prevBitCount));
-				buff[offset] = (byte) ((num & bitMask[6-prevBitCount]) << 2+prevBitCount);
-				prevBitCount = 2 + prevBitCount;
-			}
-		}
-		return buff;
+		return new String(bts, Charsets.US_ASCII);
 	}
-	
+
+	/** base64解码（字符升序，扩展字符用用".-"代替） **/
+	public static byte[] decodeHttp64(byte[] bts) {
+		return _decodeBase64(decodeHttp64Map, bts, false);
+	}
+
+	/** base64解码（字符升序，扩展字符用用".-"代替） **/
+	public static byte[] decodeHttp64(String str) {
+		if(str == null) {
+			return null;
+		}
+		return _decodeBase64(decodeHttp64Map, str.getBytes(Charsets.US_ASCII), false);
+	}
+
+	/** base64编码 **/
+	public static byte[] encodeBase64(byte[] bts) {
+		return _encodeBase64(encodeBase64Map, bts, true);
+	}
+
+	/** base64编码 **/
+	public static String encodeBase64ToString(byte[] bts) {
+		bts = _encodeBase64(encodeBase64Map, bts, true);
+		if(bts == null) {
+			return null;
+		}
+		return new String(bts, Charsets.US_ASCII);
+	}
+
+	/** base64解码 **/
+	public static byte[] decodeBase64(byte[] bts) {
+		return _decodeBase64(decodeBase64Map, bts, true);
+	}
+
+	/** base64解码 **/
+	public static byte[] decodeBase64(String str) {
+		if (str == null) {
+			return null;
+		}
+		return _decodeBase64(decodeBase64Map, str.getBytes(Charsets.US_ASCII), true);
+	}
+
 	/**
 	 * 转换bigint为12字节的字符串
-	 * @param unknown $bigintArr 格式为 array(int, int)
-	 * @param unknown $fixnum 值范围[0-255]。超出此范围，则随机取值
+	 * @param bts 待编码数据
 	 * @return string
 	 */
 	public static byte[] encodeHttp32(byte[] bts) {
@@ -321,10 +325,30 @@ public class EncodeUtils {
 		return buff;
 	}
 
+	public static byte[] encodeGZIP(byte[] bts) throws IOException {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		GZIPOutputStream gzip = new GZIPOutputStream(out);
+		gzip.write(bts);
+		gzip.close();
+		return out.toByteArray();
+	}
+
+	public static byte[] decodeGZIP(byte[] bts) throws IOException {
+		GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(bts));
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		byte[] buff = new byte[1024];
+		int size;
+		while((size = gzip.read(buff)) > 0) {
+			out.write(buff, 0, size);
+		}
+		gzip.close();
+		return out.toByteArray();
+	}
+
 	/**
 	 * 二进制数组，转为16进制表示字符串
 	 * @param bts
-	 * @return
+	 * @return String
 	 */
 	public static String bin2hex(byte[] bts) {
 		if(bts == null) {
@@ -343,7 +367,6 @@ public class EncodeUtils {
 	/**
 	 * MD5编码
 	 * @param str 待加密的字符串（系统默认编码）
-	 * @param charset 编码格式
 	 */
 	public static String md5(String str) {
 		return md5(str, null);
@@ -371,7 +394,6 @@ public class EncodeUtils {
 	/**
 	 * SH1编码
 	 * @param str 待加密的字符串（系统默认编码）
-	 * @param charset 编码格式
 	 */
 	public static String sha1(String str) {
 		return sha1(str, null);
@@ -395,19 +417,130 @@ public class EncodeUtils {
 			throw new RuntimeException(e.toString());
 		}
 	}
-	
+
+	/**
+	 * @deprecated
+	 */
 	public static String base64Encode(byte[] bts) {
-		return new BASE64Encoder().encode(bts);
+		return encodeBase64ToString(bts);
 	}
-	
+
+	/**
+	 * @deprecated
+	 */
 	public static byte[] base64Decode(String str) {
-		try {
-			return new BASE64Decoder().decodeBuffer(str);
-		} catch (IOException e) {
-			throw new RuntimeException(e.toString());
-		}
+		return decodeBase64(str);
 	}
-	
+
+	/** base64编码算法实现 **/
+	private static byte[] _encodeBase64(byte[] encodeMap, byte[] bts, boolean backfill) {
+		if(bts == null) {
+			return null;
+		}
+		int buffSize = bts.length * 4 / 3;
+		int mode = bts.length % 3;
+		if(mode > 0) {
+			buffSize++;
+			if(backfill) {
+				if (mode == 1) {
+					buffSize += 2;
+				} else {
+					buffSize++;
+				}
+			}
+		}
+		int offset = 0;
+		byte[] buff = new byte[buffSize];
+		//最后1位或2位，补填充字符“=”
+		if(backfill && mode > 0) {
+			buff[buffSize-1] = base64BackfillChar;
+			if (mode == 1) {
+				buff[buffSize - 2] = base64BackfillChar;
+			}
+		}
+		int prevBitCount = 0;
+		int prevBitNum = 0;
+		for(int i=0; i<bts.length; i++) {
+			int nextBitCount = 2 + prevBitCount;
+			int nextBitNum = bts[i] & bitMask[nextBitCount];
+			int index = (bts[i] >>> (2 + prevBitCount)) & bitMask[6-prevBitCount];
+			index |= prevBitNum << (6 - prevBitCount);
+			buff[offset++] = encodeMap[index];
+			if(nextBitCount >= 6) {
+				buff[offset++] = encodeMap[nextBitNum];
+				prevBitCount = 0;
+				prevBitNum = 0;
+			} else {
+				prevBitCount = nextBitCount;
+				prevBitNum = nextBitNum;
+			}
+		}
+		if(prevBitCount > 0) {
+			if(backfill) { //标准BASE64编码，移至高位
+				if (prevBitCount < 6) {
+					prevBitNum <<= 6 - prevBitCount;
+				}
+			}
+			buff[offset++] = encodeMap[prevBitNum];
+		}
+		return buff;
+	}
+
+	/** base64解码算法实现 **/
+	private static byte[] _decodeBase64(byte[] decodeMap, byte[] bts, boolean backfill) {
+		if(bts == null) {
+			return null;
+		}
+		int srcSize = bts.length;
+		if(backfill) {
+			for(int i=1; i<8 && srcSize > 0; i++) {
+				if(bts[srcSize - 1] != base64BackfillChar) {
+					break;
+				}
+				srcSize--;
+			}
+		}
+		int buffSize = srcSize * 3 / 4;
+		int mode = srcSize % 4;
+		int lastBitCount = 0;
+		int lastPosition = srcSize - 1;
+		if(mode > 0) {
+			if(mode == 3) {
+				lastBitCount = 4;
+			} else {
+				lastBitCount = 2;
+			}
+		}
+		byte[] buff = new byte[buffSize]; //创建buff
+		int offset = 0;
+		int prevBitCount = 0;
+		for(int i=0; i<srcSize; i++) {
+			int ch = bts[i] & 0xFF;
+			int num = 0; //默认为0
+			if(ch < decodeMap.length && decodeMap[ch] > 0) {
+				num = decodeMap[ch];
+			}
+			if(prevBitCount == 0) {
+				buff[offset] = (byte) (num << 2);
+				prevBitCount = 2;
+			} else if(prevBitCount == 6) {
+				buff[offset++] |= (byte)num;
+				prevBitCount = 0;
+			} else if(i == lastPosition && lastBitCount > 0) {
+				if(backfill) { //标准BASE64编码
+					buff[offset++] |= num >>> (6-lastBitCount) & bitMask[lastBitCount];
+				} else {
+					buff[offset++] |= num & bitMask[lastBitCount];
+				}
+			} else {
+				buff[offset++] |= (byte) (num >>> (6-prevBitCount));
+				buff[offset] = (byte) ((num & bitMask[6-prevBitCount]) << 2+prevBitCount);
+				prevBitCount = 2 + prevBitCount;
+			}
+		}
+		return buff;
+	}
+
 	private static byte[] messageDigest(String mode, byte[] bts) throws NoSuchAlgorithmException {
 		MessageDigest messageDigest = MessageDigest.getInstance(mode);
 		messageDigest.update(bts);
@@ -485,6 +618,21 @@ public class EncodeUtils {
 			}
 		}
 	}
-	
+
+	public static class Charsets {
+		/**
+		 * Seven-bit ASCII, a.k.a. ISO646-US, a.k.a. the Basic Latin block of the
+		 * Unicode character set
+		 */
+		public static final Charset US_ASCII = Charset.forName("US-ASCII");
+		/**
+		 * ISO Latin Alphabet No. 1, a.k.a. ISO-LATIN-1
+		 */
+		public static final Charset ISO_8859_1 = Charset.forName("ISO-8859-1");
+		/**
+		 * Eight-bit UCS Transformation Format
+		 */
+		public static final Charset UTF_8 = Charset.forName("UTF-8");
+	}
 
 }

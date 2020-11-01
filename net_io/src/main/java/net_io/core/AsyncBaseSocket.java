@@ -3,6 +3,7 @@ package net_io.core;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -17,7 +18,7 @@ import net_io.core.ssl.SSLChannel;
 import net_io.utils.NetLog;
 
 
-abstract public class AsyncBaseSocket {
+public class AsyncBaseSocket {
 	/**
 	 * 网络协议类型
 	 *   PLAIN 普通Socket
@@ -54,9 +55,18 @@ abstract public class AsyncBaseSocket {
 //	private ArrayList<InetSocketAddress> bindAddressList = null;
 //	private ArrayList<ServerSocketChannel> serverChannels = new ArrayList<ServerSocketChannel>();
 
+	protected AsyncBaseSocket() {
+		this.processor = new MyAsyncSocketProcessor();
+		StatNIO.bossClass.create_aync_socket.incrementAndGet(); //StatNIO
+	}
+
 	public AsyncBaseSocket(AsyncSocketProcessor processor) {
 		this.processor = processor;
 		StatNIO.bossClass.create_aync_socket.incrementAndGet(); //StatNIO
+	}
+
+	protected void init(AsyncSocketProcessor processor) {
+		this.processor = processor;
 	}
 	
 	public void setThreadName(String name) {
@@ -212,7 +222,7 @@ abstract public class AsyncBaseSocket {
 	 * 发起连接
 	 * @param host
 	 * @param port
-	 * @return
+	 * @return 非空 NetChannel
 	 * @throws Exception
 	 */
 	public NetChannel connect(String host, int port) throws IOException {
@@ -223,7 +233,7 @@ abstract public class AsyncBaseSocket {
 	/**
 	 * 发起连接
 	 * @param remote
-	 * @return
+	 * @return 非空 NetChannel
 	 * @throws Exception
 	 */
 	public NetChannel connect(final InetSocketAddress remote) throws IOException {
@@ -691,6 +701,30 @@ abstract public class AsyncBaseSocket {
 			this.key = key;
 			this.optValue = optValue;
 			this.mode = mode;
+		}
+	}
+
+	private static class MyAsyncSocketProcessor extends AsyncSocketProcessor {
+
+		@Override
+		public boolean acceptPrecheck(AsyncBaseSocket that, ServerSocket socket) throws Exception {
+			StatNIO.bossClass.default_on_accept.incrementAndGet();
+			return true;
+		}
+
+		@Override
+		public void onConnect(NetChannel channel) throws Exception {
+			StatNIO.bossClass.default_on_connect.incrementAndGet();
+		}
+
+		@Override
+		public void onClose(NetChannel channel) throws Exception {
+			StatNIO.bossClass.default_on_close.incrementAndGet();
+		}
+
+		@Override
+		public void onReceive(NetChannel channel) throws Exception {
+			StatNIO.bossClass.default_on_receive.incrementAndGet();
 		}
 	}
 }

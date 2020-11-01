@@ -11,6 +11,16 @@ import net_io.myaction.HttpHeaders;
 import net_io.myaction.Request;
 
 public class ServletRequest extends Request {
+
+	protected ServletRequest() {
+		super.autoParsePost = true;
+	}
+
+	@Override
+	public boolean isHttpRequest() {
+		return true;
+	}
+
 	public static ServletRequest parse(HttpServletRequest servletRequest) throws IOException {
 		ServletRequest request = new ServletRequest();
 		request.in = servletRequest.getInputStream();

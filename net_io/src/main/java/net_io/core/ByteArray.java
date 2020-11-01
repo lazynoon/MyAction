@@ -75,7 +75,7 @@ public class ByteArray {
 	/**
 	 * 复制 源ByteBuffer 中的剩余字节到
 	 * @param src 源ByteBuffer
-	 * @return
+	 * @return 非空ByteArray
 	 */
 	public static ByteArray copy(ByteBuffer src) {
 		int srcPostion = src.position();
@@ -175,8 +175,7 @@ public class ByteArray {
 	 * Returns the byte array that backs this buffer  (optional operation). 
 	 * Modifications to this buffer's content will cause the returned array's content to be modified, and vice versa.
 	 * Invoke the hasArray method before invoking this method in order to ensure that this buffer has an accessible backing array. 
-	 * @param size
-	 * @return
+	 * @return byte[]
 	 */
 	public byte[] readBytesBack() {
 		return buff.array();		

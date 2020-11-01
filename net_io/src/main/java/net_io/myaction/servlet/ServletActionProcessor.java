@@ -26,8 +26,6 @@ public class ServletActionProcessor extends ActionProcessor {
 		Response response = new Response();
 		try {
 			request = ServletRequest.parse(servletRequest);
-			//解析POST对象
-			request.parseBody(MyActionServer.MAX_POST_LENGTH); //Post Max Length: 2M 
 			//处理Action请求
 			String tplName = executeAction(request, response);
 

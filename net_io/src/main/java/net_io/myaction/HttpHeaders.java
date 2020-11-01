@@ -10,8 +10,8 @@ public class HttpHeaders {
 	protected ArrayList<String> names = new ArrayList<String>();
 	protected HashMap<String, List<String>> data = new HashMap<String, List<String>>();
 	public HttpHeaders() {}
-	
-	protected static HttpHeaders newInstance(Set<Entry<String, List<String>>> params) {
+
+	public static HttpHeaders newInstance(Set<Entry<String, List<String>>> params) {
 		HttpHeaders obj = new HttpHeaders();
 		for(Entry<String, List<String>> item : params) {
 			String key = item.getKey();

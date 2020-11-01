@@ -27,13 +27,14 @@ public class ByteBufferPool {
 	/** 多行多列缓存对象[BLOCK, 行号, 列号] **/
 	private static BufferInfo[][][] listPool = new BufferInfo[BLOCK_SIZE_COUNT][][];
 	/** HashMap缓存对象 **/
-	private static ConcurrentHashMap<ByteBuffer, BufferInfo> mapPool = new ConcurrentHashMap<ByteBuffer, BufferInfo>(MAX_ROW_NUM * MAX_COLUMN_NUM * 6 / 5, 1);
+	private static ConcurrentHashMap<byte[], BufferInfo> mapPool = new ConcurrentHashMap<byte[], BufferInfo>(MAX_ROW_NUM * MAX_COLUMN_NUM * 6 / 5, 1);
 	/** 管理线程 **/
 	private static ManagerThread managerThread = null;
 	/** 默认字节顺序 **/
 	private static ByteOrder defaultOrder = ByteOrder.LITTLE_ENDIAN;
 	@Deprecated
 	public static int MAX_BUFFER_SIZE = 512 * 1024; //默认buffer大小最大为512K
+	private static long lastMaxApplyMemory = -1;
 	
 	// 初始化
 	static {
@@ -75,7 +76,7 @@ public class ByteBufferPool {
 					for(int k=0; k<MAX_COLUMN_NUM; k++) {
 						BufferInfo item = listPool[i][j][k];
 						if(item != null) {
-							mapPool.remove(item.buff);
+							mapPool.remove(item.buff.array());
 							listPool[i][j][k] = null;
 						}
 					}
@@ -88,6 +89,12 @@ public class ByteBufferPool {
 			managerThread = new ManagerThread();
 			managerThread.start();
 		}
+		lastMaxApplyMemory = maxApplyMemory;
+	}
+
+	/** 获取最大申请内存容量 **/
+	public static long getMaxApplyMemory() {
+		return lastMaxApplyMemory;
 	}
 	
 	@Deprecated
@@ -102,42 +109,55 @@ public class ByteBufferPool {
 	
 	//TODO: 创建固定大小的buffer
 	public static ByteBuffer mallocSmall() {
+		StatNIO.bufferPoolStat.alloc_1k_count.incrementAndGet();
 		return malloc(0, BLOCK_SIZE_1K);
 	}
 	public static ByteBuffer mallocMiddle() {
+		StatNIO.bufferPoolStat.alloc_8k_count.incrementAndGet();
 		return malloc(1, BLOCK_SIZE_8K);
 	}
 	public static ByteBuffer mallocLarge() {
+		StatNIO.bufferPoolStat.alloc_64k_count.incrementAndGet();
 		return malloc(2, BLOCK_SIZE_64K);
 	}
 	
 	public static ByteBuffer malloc1K() {
+		StatNIO.bufferPoolStat.alloc_1k_count.incrementAndGet();
 		return malloc(0, BLOCK_SIZE_1K);
 	}
 	public static ByteBuffer malloc8K() {
+		StatNIO.bufferPoolStat.alloc_8k_count.incrementAndGet();
 		return malloc(1, BLOCK_SIZE_8K);
 	}
 	public static ByteBuffer malloc64K() {
+		StatNIO.bufferPoolStat.alloc_64k_count.incrementAndGet();
 		return malloc(2, BLOCK_SIZE_64K);
 	}
 	
 	private static ByteBuffer malloc(int sizeIndex, int capacity) {
+		StatNIO.bufferPoolStat.total_alloc_count.incrementAndGet();
 		ByteBuffer result;
-		int randNum = (int)(Math.random() * Integer.MAX_VALUE);
-		int rowNo = randNum % limitRowNum;
-		int colNo = randNum % MAX_COLUMN_NUM;
-		BufferInfo[] row = listPool[sizeIndex][rowNo];
+		BufferInfo[] row = null;
+		int randNum = (int) (Math.random() * Integer.MAX_VALUE);
+		int rowNo = 0;
+		if(limitRowNum > 0) {
+			rowNo = randNum % limitRowNum;
+			row = listPool[sizeIndex][rowNo];
+		}
 		if(row == null) { //取到了已被收缩了的行
+			StatNIO.bufferPoolStat.pool_not_exist_create.incrementAndGet();
 			result = ByteBuffer.allocate(capacity);
 			result.order(defaultOrder);
 			return result;
 		}
+		int colNo = randNum % MAX_COLUMN_NUM;
 		BufferInfo freeBuff = null;
 		synchronized(row) {
 			for(int i=colNo; i<MAX_COLUMN_NUM; i++) {
 				if(row[i] == null) {
 					ByteBuffer buff = ByteBuffer.allocate(capacity);
 					row[i] = new BufferInfo(buff, sizeIndex, rowNo, i);
+					StatNIO.bufferPoolStat.alloc_new_buffer_count.incrementAndGet();
 				}
 				if(row[i].free && !row[i].lock) {
 					freeBuff = row[i];
@@ -149,6 +169,7 @@ public class ByteBufferPool {
 					if(row[i] == null) {
 						ByteBuffer buff = ByteBuffer.allocate(capacity);
 						row[i] = new BufferInfo(buff, sizeIndex, rowNo, i);
+						StatNIO.bufferPoolStat.alloc_new_buffer_count.incrementAndGet();
 					}
 					if(row[i].free && !row[i].lock) {
 						freeBuff = row[i];
@@ -160,13 +181,14 @@ public class ByteBufferPool {
 				freeBuff.activeTime = System.currentTimeMillis();
 				freeBuff.free = false;
 				freeBuff.buff.clear();
-				mapPool.put(freeBuff.buff, freeBuff);
+				mapPool.put(freeBuff.buff.array(), freeBuff);
 			}
 		}
 		if(freeBuff != null) {
 			result = freeBuff.buff;
 		} else {
 			result = ByteBuffer.allocate(capacity);
+			StatNIO.bufferPoolStat.pool_full_create_count.incrementAndGet();
 		}
 		result.order(defaultOrder);
 		return result;
@@ -182,46 +204,59 @@ public class ByteBufferPool {
 		
 	}
 	public static void free(ByteBuffer buff) {
+		StatNIO.bufferPoolStat.total_release_count.incrementAndGet();
 		if(buff == null) {
 			return;
 		}
-		BufferInfo busyBuff = mapPool.get(buff);
+		BufferInfo busyBuff = mapPool.get(buff.array());
 		if(busyBuff == null) {
+			StatNIO.bufferPoolStat.miss_release_count.incrementAndGet();
 			return;
 		}
 		BufferInfo[] row = listPool[busyBuff.sizeIndex][busyBuff.rowNo];
-		if(row == null || busyBuff != row[busyBuff.colNo]) { //Map存在，List不存在。可能并发创建的
-			mapPool.remove(buff); //从Map缓存中移除
+		if(row != null && busyBuff.colNo <= row.length && busyBuff == row[busyBuff.colNo]) {
+			StatNIO.bufferPoolStat.release_keep_cached.incrementAndGet();
+		} else {
+			mapPool.remove(buff.array()); //Map存在，List不存在。可能并发创建的
+			StatNIO.bufferPoolStat.release_not_in_list.incrementAndGet();
 		}
 		busyBuff.activeTime = System.currentTimeMillis();
 		busyBuff.free = true;
 	}
 	
 	private static void scan() {
+		long lastScanRows = 0L;
+		long lastScanObjects = 0L;
 		int limit = limitRowNum;
-		long lastTime = System.currentTimeMillis() - 15000;
+		long lastTime = System.currentTimeMillis() - 15000; //15秒前未使用对象回收
 		for(int i=0; i<BLOCK_SIZE_COUNT; i++) {
 			for(int j=0; j<limit; j++) {
 				BufferInfo[] row = listPool[i][j];
 				if(row == null) {
 					continue;
 				}
+				lastScanRows++;
 				for(int k=0; k<MAX_COLUMN_NUM; k++) {
 					BufferInfo info = row[k];
 					if(info == null) {
 						continue;
 					}
+					lastScanObjects++;
 					if(info.activeTime >= lastTime) {
 						continue;
 					}
-					mapPool.remove(info.buff);
-					listPool[i][j] = null;
+					mapPool.remove(info.buff.array());
+					row[k] = null;
+					StatNIO.bufferPoolStat.scan_release_count.incrementAndGet();
 				}
 			}
 		}
+		StatNIO.bufferPoolStat.last_scan_time = System.currentTimeMillis();
+		StatNIO.bufferPoolStat.last_scan_rows = lastScanRows;
+		StatNIO.bufferPoolStat.last_scan_objects = lastScanObjects;
 	}
-	
-	
+
+
 	private static class BufferInfo {
 		/** 最后激活时间（过期后，将从缓存次中删除而不是复用） **/
 		long activeTime = 0;
@@ -256,13 +291,16 @@ public class ByteBufferPool {
 		public void run() {
 			while(true) {
 				try {
+					StatNIO.bufferPoolStat.total_scan_count.incrementAndGet();
 					scan();
 				} catch(Exception e) {
+					StatNIO.bufferPoolStat.scan_exception_count.incrementAndGet();
 					NetLog.logWarn(e);
 				}
 				try {
 					Thread.sleep(5000);
 				} catch (InterruptedException e) {
+					StatNIO.bufferPoolStat.scan_exception_count.incrementAndGet();
 					NetLog.logWarn(e);
 				}
 			}

@@ -206,14 +206,14 @@ public class Response {
 	
 	/**
 	 * 获取错误代码
-	 * @return
+	 * @return int
 	 */
 	public int getError() {
 		return this.error;
 	}
 	/**
 	 * 获取错误代码
-	 * @return
+	 * @return String
 	 */
 	public String getReason() {
 		return this.reason;

@@ -10,7 +10,6 @@ public class DateUtils {
 	
 	/**
 	 * 取得简短时间
-	 * @param time 单位：ms
 	 * @return 相对与 REFERENCE_TIME 的时间（单位秒）
 	 */
 	public static int getShortTime() {
@@ -35,7 +34,7 @@ public class DateUtils {
 	 * @return 解析失败返回null
 	 */
 	public static Date parseDate(String str) {
-		if(str == null) {
+		if(str == null || str.length() == 0) {
 			return null;
 		}
 		try {

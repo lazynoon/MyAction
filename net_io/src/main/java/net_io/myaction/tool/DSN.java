@@ -175,7 +175,14 @@ public class DSN {
 				dsn.host = midStr.substring(pos2+1, pos1);
 			}
 		}
-			
+		//默认端口处理
+		if(dsn.port == 0) {
+			if("http".equals(dsn.scheme)) {
+				dsn.port = 80;
+			} else if("https".equals(dsn.scheme)) {
+				dsn.port = 443;
+			}
+		}
 		return dsn;
 	}
 

@@ -16,18 +16,21 @@ public abstract class BaseMyAction {
 	//public String getModule() { return ""; }
 	//public String getAction() { return ""; }
 	
-	protected Exception getLastActionException() { return lastActionException; }
-	protected void setLastActionException(Exception lastActionException) { this.lastActionException = lastActionException; }
+	final protected Exception getLastActionException() { return lastActionException; }
+	final protected void setLastActionException(Exception lastActionException) { this.lastActionException = lastActionException; }
+
+	/** 构建Action类时调用（已赋值request, response未解析POST输入流） **/
+	protected void construct() throws Exception {}
 
 	/**
 	 * 在执行Action方法前调用
 	 */
 	protected void beforeExecute() throws Exception {
-		preExecute();
+//		preExecute();
 	}
 	
-	/** @deprecated **/
-	protected void preExecute() throws Exception {}
+//	/** @deprecated **/
+//	protected void preExecute() throws Exception {}
 
 	
 	protected boolean check() throws Exception {

@@ -50,7 +50,7 @@ public class Mixed {
 	/**
 	 * 获取字符串的值。默认为空字符串
 	 * @param key
-	 * @return
+	 * @return String
 	 */
 	public String getString(String key) {
 		return getString(key, "");
@@ -59,7 +59,7 @@ public class Mixed {
 	 * 获取字符串的值
 	 * @param key
 	 * @param defaultValue
-	 * @return
+	 * @return String
 	 */
 	public String getString(String key, String defaultValue) {
 		Mixed result = _get(key);
@@ -78,7 +78,6 @@ public class Mixed {
 			return (byte[]) ret.data;
 		}
 		return ret.data.toString().getBytes();
-		
 	}
 	public short getShort(String key) {
 		return MixedUtils.parseShort(getString(key));
@@ -97,18 +96,115 @@ public class Mixed {
 	}
 
 	/**
-	 * 指KEY，是否为空字符串
-	 * @param key
+	 * 当前对象的内部数据，是否null
+	 * @return boolean
 	 */
-	public boolean isEmpty(String key) {
-		Mixed result = get(key);
-		if(result == null || result.data == null) {
+	public boolean isSelfNull() {
+		if(data == null) {
 			return true;
-		} else if(result.data instanceof String) {
-			return ((String)result.data).length() == 0;
 		} else {
 			return false;
 		}
+	}
+
+	/**
+	 * 当前对象的内部数据，是否空值（范围：null或空值）
+	 * @return boolean
+	 */
+	public boolean isSelfEmpty() {
+		if(data == null) {
+			return true;
+		}
+		if(data instanceof String) {
+			return ((String)data).length() == 0;
+		} else {
+			return false;
+		}
+	}
+
+	/**
+	 * 当前对象的内部数据，是否true
+	 *     排除范围：null、空字符串、0（含String类型）、false(大小写不敏感)
+	 * @return boolean
+	 */
+	public boolean isSelfTrue() {
+		if(data == null) {
+			return false;
+		}
+		String str;
+		switch(type()) {
+			case STRING:
+				str = (String) data;
+				break;
+			case PRIMITIVE:
+				str = data.toString();
+				break;
+			default:
+				return true;
+		}
+		if(str.length() == 0 || str.equals("0") || str.equalsIgnoreCase("false")) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * 当前对象的内部数据，是否数字
+	 * @return boolean
+	 */
+	public boolean isSelfNumeric() {
+		if(data == null) {
+			return false;
+		}
+		boolean ret = false;
+		switch(type()) {
+			case STRING:
+				ret = MixedUtils.isNumeric((String) data);
+				break;
+			case PRIMITIVE:
+				if(!(data instanceof Boolean)) {
+					ret = true; //排除布尔型，都是数字
+				}
+				break;
+		}
+		return ret;
+	}
+
+	/**
+	 * 指定KEY，是否null（KEY不存在，也按null处理）
+	 * @param key
+	 * @return boolean
+	 */
+	public boolean isNull(String key) {
+		Mixed result = _get(key);
+		if(result == null) {
+			return true;
+		}
+		return result.isSelfNull();
+	}
+
+	/**
+	 * 指定KEY，是否为空字符串
+	 * @param key
+	 */
+	public boolean isEmpty(String key) {
+		Mixed result = _get(key);
+		if(result == null) {
+			return true;
+		}
+		return result.isSelfEmpty();
+	}
+
+	/**
+	 * 指定KEY，是否为TRUE
+	 * @return 返回false的范围：null、空字符串、0（含String类型）、false(大小写不敏感)；除此之外，都返回true
+	 */
+	public boolean isTrue(String key) {
+		Mixed result = _get(key);
+		if(result == null) {
+			return false;
+		}
+		return result.isSelfTrue();
 	}
 	
 	/**
@@ -116,18 +212,17 @@ public class Mixed {
 	 * @param key
 	 */
 	public boolean isNumeric(String key) {
-		Mixed result = get(key);
-		if(result == null || result.data == null) {
+		Mixed result = _get(key);
+		if(result == null) {
 			return false;
-		} else {
-			return MixedUtils.isNumeric(result.data.toString());
 		}
+		return result.isSelfNumeric();
 	}
-	
+
 	/**
 	 * 是否存在key
 	 * @param key
-	 * @return
+	 * @return boolean
 	 */
 	@SuppressWarnings("unchecked")
 	public boolean containsKey(String key) {

@@ -109,7 +109,7 @@ public class MyThreadPool {
 	
 	/**
 	 * 获取任务队列中的数量
-	 * @return
+	 * @return int
 	 */
 	public int getTaskQueueSize() {
 		return taskQueue.size();

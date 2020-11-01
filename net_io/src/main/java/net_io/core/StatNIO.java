@@ -7,15 +7,29 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class StatNIO {
+
+	/** 十进制整数：1千 **/
+	public final static long ONE_THOUSAND_LONG = 1000L;
+	/** 十进制整数：1百万 **/
+	public final static long ONE_MILLION_LONG = 1000000L;
+	/** 十进制双精度浮点数：1千 **/
+	public final static double ONE_THOUSAND_DOUBLE = 1000.0;
+	/** 十进制双精度浮点数：1百万 **/
+	public final static double ONE_MILLION_DOUBLE = 1000000.0;
+
 	/** 启动时间 **/
 	public final static Date startTime = new Date();
+	/** 启动时间（纳秒偏移时间） **/
+	public final static long startNanoTime = System.nanoTime();
 	/** 核心类事件统计 **/
 	public final static BossClass bossClass = new BossClass();
 	/** StreamSocket类事件统计 **/
 	public final static StreamSocketStat streamStat = new StreamSocketStat();
 	/** PacketSocket类事件统计 **/
 	public final static PacketSocketStat packetStat = new PacketSocketStat();
-	
+	/** ByteBuffer缓存池计数器 **/
+	public final static BufferPoolStat bufferPoolStat = new BufferPoolStat();
+
 	/** 核心类统计参数订单 **/
 	public static class BossClass {
 		private ArrayList<String> fields = new ArrayList<String>();
@@ -119,7 +133,15 @@ public class StatNIO {
 		protected AtomicLong run_io_exception = new AtomicLong(0);
 		/** Boss主线程中的其它Exception **/
 		protected AtomicLong run_other_exception = new AtomicLong(0);
-	
+		/** 检查是否接受连接 **/
+		protected AtomicLong default_on_accept = new AtomicLong(0);
+		/** 默认处理连接成功 **/
+		protected AtomicLong default_on_connect = new AtomicLong(0);
+		/** 默认处理接收数据件 **/
+		protected AtomicLong default_on_receive = new AtomicLong(0);
+		/** 默认处理连接关闭 **/
+		protected AtomicLong default_on_close = new AtomicLong(0);
+
 		private void init() {
 			addName("create_aync_socket", "创建异步Socket对象");
 			addName("bind_invoke_start", "侦听端口调用开始");
@@ -169,6 +191,10 @@ public class StatNIO {
 			addName("run_readsocket_closed", "接收数据时，Socket已关闭");
 			addName("run_io_exception", "Boss主线程中的IOException");
 			addName("run_other_exception", "Boss主线程中的其它Exception");
+			addName("default_on_accept", "检查是否接受连接");
+			addName("default_on_connect", "默认处理连接成功");
+			addName("default_on_receive", "默认处理接收数据");
+			addName("default_on_close", "默认处理连接关闭");
 		}
 		
 		private void addName(String code, String name) {
@@ -178,7 +204,7 @@ public class StatNIO {
 		
 		/**
 		 * 获取所有字段列表
-		 * @return 
+		 * @return 非空 String[]
 		 */
 		public String[] getFields() {
 			return fields.toArray(new String[0]);
@@ -187,7 +213,7 @@ public class StatNIO {
 		/**
 		 * 获取字段的中文名称
 		 * @param field
-		 * @return
+		 * @return  不存在返回 null
 		 */
 		public String getChineseName(String field) {
 			return chineseNames.get(field);
@@ -248,7 +274,11 @@ public class StatNIO {
 			map.put("run_readsocket_closed", run_readsocket_closed.get());
 			map.put("run_io_exception", run_io_exception.get());
 			map.put("run_other_exception", run_other_exception.get());
-			
+			map.put("default_on_accept", default_on_accept.get());
+			map.put("default_on_connect", default_on_connect.get());
+			map.put("default_on_receive", default_on_receive.get());
+			map.put("default_on_close", default_on_close.get());
+
 			//运行时间（单位ms）
 			map.put("offset_time", new Date().getTime() - startTime.getTime());
 			return map;
@@ -264,6 +294,8 @@ public class StatNIO {
 		}
 		/** 创建StreamSocket对象 **/
 		protected AtomicLong create_stream_socket = new AtomicLong(0);
+		/** 底层回调接受请求 **/
+		protected AtomicLong call_on_accept = new AtomicLong(0);
 		/** 底层回调连接成功 **/
 		protected AtomicLong call_on_connect = new AtomicLong(0);
 		/** 底层回调接收数据 **/
@@ -284,7 +316,9 @@ public class StatNIO {
 		protected AtomicLong send_size = new AtomicLong(0);
 		/** 接收的字节数 **/
 		protected AtomicLong receive_size = new AtomicLong(0);
-	
+		/** 没有地址接受请求失败 **/
+		protected AtomicLong accept_error_no_address = new AtomicLong(0);
+
 		private void init() {
 			addName("create_stream_socket", "创建StreamSocket对象");
 			addName("call_on_connect", "底层回调连接成功");
@@ -297,6 +331,7 @@ public class StatNIO {
 			addName("send_invoke", "发送数据包调用");
 			addName("send_size", "发送的字节数");
 			addName("receive_size", "接收的字节数");
+			addName("accept_error_no_address", "没有地址接受请求失败");
 		}
 		
 		private void addName(String code, String name) {
@@ -306,7 +341,7 @@ public class StatNIO {
 		
 		/**
 		 * 获取所有字段列表
-		 * @return 
+		 * @return 非空 String[]
 		 */
 		public String[] getFields() {
 			return fields.toArray(new String[0]);
@@ -315,7 +350,7 @@ public class StatNIO {
 		/**
 		 * 获取字段的中文名称
 		 * @param field
-		 * @return
+		 * @return  不存在返回 null
 		 */
 		public String getChineseName(String field) {
 			return chineseNames.get(field);
@@ -339,6 +374,7 @@ public class StatNIO {
 			map.put("send_invoke", send_invoke.get());
 			map.put("send_size", send_size.get());
 			map.put("receive_size", receive_size.get());
+			map.put("accept_error_no_address", accept_error_no_address.get());
 
 			//运行时间（单位ms）
 			map.put("offset_time", new Date().getTime() - startTime.getTime());
@@ -424,7 +460,7 @@ public class StatNIO {
 		
 		/**
 		 * 获取所有字段列表
-		 * @return 
+		 * @return 非空 String[]
 		 */
 		public String[] getFields() {
 			return fields.toArray(new String[0]);
@@ -433,7 +469,7 @@ public class StatNIO {
 		/**
 		 * 获取字段的中文名称
 		 * @param field
-		 * @return
+		 * @return  不存在返回 null
 		 */
 		public String getChineseName(String field) {
 			return chineseNames.get(field);
@@ -466,6 +502,126 @@ public class StatNIO {
 			map.put("msg_undefined", msg_undefined.get());
 			map.put("msg_process", msg_process.get());
 			map.put("error_format_packet", error_format_packet.get());
+
+			//运行时间（单位ms）
+			map.put("offset_time", new Date().getTime() - startTime.getTime());
+			return map;
+		}
+	}
+
+	/** ByteBufferPool统计 **/
+	public static class BufferPoolStat {
+		private ArrayList<String> fields = new ArrayList<String>();
+		private HashMap<String, String> chineseNames = new HashMap<String, String>();
+		private BufferPoolStat() {
+			init();
+		}
+		/** 申请缓存对象总次数 **/
+		protected AtomicLong total_alloc_count = new AtomicLong(0);
+		/** 申请1K字节缓存次数 **/
+		protected AtomicLong alloc_1k_count = new AtomicLong(0);
+		/** 申请8K字节缓存次数 **/
+		protected AtomicLong alloc_8k_count = new AtomicLong(0);
+		/** 申请64K字节缓存次数 **/
+		protected AtomicLong alloc_64k_count = new AtomicLong(0);
+		/** 缓存区不存在直接创建 **/
+		protected AtomicLong pool_not_exist_create = new AtomicLong(0);
+		/** 缓存区满直接创建 **/
+		protected AtomicLong pool_full_create_count = new AtomicLong(0);
+		/** 申请缓存创建对象 **/
+		protected AtomicLong alloc_new_buffer_count = new AtomicLong(0);
+		/** 释放缓存对象总次数 **/
+		protected AtomicLong total_release_count = new AtomicLong(0);
+		/** 释放缓存对象不存在 **/
+		protected AtomicLong miss_release_count = new AtomicLong(0);
+		/** 释放缓存对象保持待用 **/
+		protected AtomicLong release_keep_cached = new AtomicLong(0);
+		/** 释放缓存对象不在LIST中 **/
+		protected AtomicLong release_not_in_list = new AtomicLong(0);
+		/** 缓存区扫描次数 **/
+		protected AtomicLong total_scan_count = new AtomicLong(0);
+		/** 缓存扫描释放对象数 **/
+		protected AtomicLong scan_release_count = new AtomicLong(0);
+		/** 缓存扫描耗时（耗秒） **/
+		protected AtomicLong scan_cost_mstime = new AtomicLong(0);
+		/** 扫描异常次数 **/
+		protected AtomicLong scan_exception_count = new AtomicLong(0);
+		/** 最后扫描时间戳 **/
+		protected long last_scan_time = 0;
+		/** 最后扫描行数 **/
+		protected long last_scan_rows = 0;
+		/** 最后扫描对象数 **/
+		protected long last_scan_objects = 0;
+
+
+		private void init() {
+			addName("total_alloc_count", "申请缓存对象总次数");
+			addName("alloc_1k_count", "申请1K字节缓存次数");
+			addName("alloc_8k_count", "申请8K字节缓存次数");
+			addName("alloc_64k_count", "申请64K字节缓存次数");
+			addName("pool_not_exist_create", "缓存区不存在直接创建");
+			addName("pool_full_create_count", "缓存区满直接创建");
+			addName("alloc_new_buffer_count", "申请缓存创建对象");
+			addName("total_release_count", "释放缓存对象总次数");
+			addName("miss_release_count", "释放缓存对象不存在");
+			addName("release_keep_cached", "释放缓存对象保持待用");
+			addName("release_not_in_list", "释放缓存对象不在LIST中");
+			addName("total_scan_count", "缓存区扫描次数");
+			addName("scan_release_count", "缓存扫描释放对象数");
+			addName("scan_cost_mstime", "缓存扫描耗时（毫秒）");
+			addName("scan_exception_count", "扫描异常次数 ");
+			addName("last_scan_time", "最后扫描时间戳");
+			addName("last_scan_rows", "最后扫描行数");
+			addName("last_scan_objects", "最后扫描对象数");
+		}
+
+		private void addName(String code, String name) {
+			fields.add(code);
+			chineseNames.put(code, name);
+		}
+
+		/**
+		 * 获取所有字段列表
+		 * @return 非空 String[]
+		 */
+		public String[] getFields() {
+			return fields.toArray(new String[0]);
+		}
+
+		/**
+		 * 获取字段的中文名称
+		 * @param field
+		 * @return  不存在返回 null
+		 */
+		public String getChineseName(String field) {
+			return chineseNames.get(field);
+		}
+
+		/**
+		 * 获取统计数据
+		 * @return Map
+		 */
+		public Map<String, Long> getStat() {
+			Map<String, Long> map = new HashMap<String, Long>();
+
+			map.put("total_alloc_count", total_alloc_count.get());
+			map.put("alloc_1k_count", alloc_1k_count.get());
+			map.put("alloc_8k_count", alloc_8k_count.get());
+			map.put("alloc_64k_count", alloc_64k_count.get());
+			map.put("pool_not_exist_create", pool_not_exist_create.get());
+			map.put("pool_full_create_count", pool_full_create_count.get());
+			map.put("alloc_new_buffer_count", alloc_new_buffer_count.get());
+			map.put("total_release_count", total_release_count.get());
+			map.put("miss_release_count", miss_release_count.get());
+			map.put("release_keep_cached", release_keep_cached.get());
+			map.put("release_not_in_list", release_not_in_list.get());
+			map.put("total_scan_count", total_scan_count.get());
+			map.put("scan_cost_mstime", scan_cost_mstime.get());
+			map.put("scan_release_count", scan_release_count.get());
+			map.put("scan_exception_count", scan_exception_count.get());
+			map.put("last_scan_time", last_scan_time);
+			map.put("last_scan_rows", last_scan_rows);
+			map.put("last_scan_objects", last_scan_objects);
 
 			//运行时间（单位ms）
 			map.put("offset_time", new Date().getTime() - startTime.getTime());

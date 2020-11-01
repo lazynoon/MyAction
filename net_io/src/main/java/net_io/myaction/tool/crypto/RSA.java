@@ -1,27 +1,20 @@
 package net_io.myaction.tool.crypto;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.Key;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.X509EncodedKeySpec;
+import net_io.myaction.tool.exception.CryptoException;
+import net_io.utils.EncodeUtils;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
-
-import net_io.myaction.tool.exception.CryptoException;
-import net_io.utils.EncodeUtils;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.security.*;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 
 public class RSA {
 	public enum KeyMode {PRIVATE_KEY, PUBLIC_KEY}
@@ -79,8 +72,7 @@ public class RSA {
 	/**
 	 * 得到公钥
 	 * 
-	 * @param publicKey
-	 *            密钥字符串（经过base64编码）
+	 * @param publicKey 密钥字符串（经过base64编码）
 	 * @throws Exception
 	 */
 	public static RSAPublicKey parsePublicKey(String publicKey) throws NoSuchAlgorithmException, InvalidKeySpecException {
@@ -98,8 +90,7 @@ public class RSA {
 	/**
 	 * 得到私钥
 	 * 
-	 * @param privateKey
-	 *            密钥字符串（经过base64编码）
+	 * @param privateKey 密钥字符串（经过base64编码）
 	 * @throws Exception
 	 */
 	protected static RSAPrivateKey parsePrivateKey(String privateKey)
@@ -117,11 +108,11 @@ public class RSA {
 	}
 	
 	public String encrypt(String str) throws CryptoException {
-		return EncodeUtils.base64Encode(encrypt(str.getBytes(StandardCharsets.UTF_8)));
+		return EncodeUtils.base64Encode(encrypt(str.getBytes(EncodeUtils.Charsets.UTF_8)));
 	}
 	
 	public String decrypt(String str) throws CryptoException {
-		return new String(decrypt(EncodeUtils.base64Decode(str)), StandardCharsets.UTF_8);
+		return new String(decrypt(EncodeUtils.base64Decode(str)), EncodeUtils.Charsets.UTF_8);
 	}
 
 	public byte[] encrypt(byte[] bts) throws CryptoException {
@@ -171,9 +162,9 @@ public class RSA {
 	/**
 	 * 公钥加密
 	 * 
-	 * @param data
+	 * @param bts
 	 * @param publicKey
-	 * @return
+	 * @return byte[]
 	 * @throws IOException
 	 * @throws InvalidKeyException
 	 * @throws NoSuchPaddingException
@@ -191,9 +182,9 @@ public class RSA {
 	/**
 	 * 私钥解密
 	 * 
-	 * @param data
+	 * @param bts
 	 * @param privateKey
-	 * @return
+	 * @return byte[]
 	 * @throws InvalidKeyException
 	 * @throws IOException
 	 * @throws NoSuchPaddingException
@@ -213,9 +204,9 @@ public class RSA {
 	/**
 	 * 私钥加密
 	 * 
-	 * @param data
+	 * @param bts
 	 * @param privateKey
-	 * @return
+	 * @return byte[]
 	 * @throws IOException
 	 * @throws InvalidKeyException
 	 * @throws NoSuchPaddingException
@@ -233,9 +224,9 @@ public class RSA {
 	/**
 	 * 公钥解密
 	 * 
-	 * @param data
+	 * @param bts
 	 * @param publicKey
-	 * @return
+	 * @return byte[]
 	 * @throws InvalidKeyException
 	 * @throws NoSuchPaddingException
 	 * @throws NoSuchAlgorithmException

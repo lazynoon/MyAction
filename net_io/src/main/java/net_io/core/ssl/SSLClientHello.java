@@ -1,15 +1,14 @@
 package net_io.core.ssl;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-
 import net_io.core.ByteArray;
 import net_io.core.ByteBufferPool;
 import net_io.utils.EncodeUtils;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
 public class SSLClientHello {
 	/** HELLO数据库最大限长 **/
@@ -150,7 +149,7 @@ public class SSLClientHello {
 			}
 			for(Extension.ServerName serverName : extension.getServerNames()) {
 				if(serverName.type == Extension.ServerName.TYPE_HOST_NAME) {
-					return new String(serverName.name, StandardCharsets.UTF_8);
+					return new String(serverName.name, EncodeUtils.Charsets.UTF_8);
 				}
 			}
 		}

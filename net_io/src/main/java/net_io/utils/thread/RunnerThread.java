@@ -40,7 +40,7 @@ public class RunnerThread extends Thread {
 	public boolean assignFree() {
 		boolean free = threadInfo.status == Status.INIT || threadInfo.status == Status.FREE;
 		if(free) {
-			threadInfo.assignTime = System.currentTimeMillis();
+			threadInfo.assignNsTime = System.nanoTime();
 			threadInfo.status = Status.ASSIGNED;
 			synchronized(this) {
 				this.lastActiveTime = System.currentTimeMillis();
@@ -103,12 +103,12 @@ public class RunnerThread extends Thread {
 	public static class ThreadInfo {
 		private Status status = Status.INIT;
 		private long runCount = 0;
-		private long assignTime = 0;
+		private long assignNsTime = 0;
 		private RunTask runTask = null;
 		
 		private void resetFree() {
 			status = Status.FREE;
-			assignTime = 0;
+			assignNsTime = 0;
 		}
 
 		public String getStatus() {
@@ -118,11 +118,11 @@ public class RunnerThread extends Thread {
 		/**
 		 * 运行时间，单位毫秒
 		 */
-		public long getRunTime() {
-			if(assignTime == 0) {
+		public long getRunNsTime() {
+			if(assignNsTime == 0) {
 				return 0;
 			}
-			return System.currentTimeMillis() - assignTime;
+			return System.nanoTime() - assignNsTime;
 		}
 		
 		/**

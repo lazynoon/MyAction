@@ -14,8 +14,10 @@ abstract public class ActionProcessor implements Runnable {
 	public static final int MODE_HTTP = 2;
 	//按HTTP接口运行
 	public static final int MODE_SERVLET = 3;
-	//启动的nano time
-	private long startTime = System.currentTimeMillis();
+	//启动的毫秒时间戳
+	private long startMsTime = System.currentTimeMillis();
+	//启动的纳秒偏移时间
+	private long startNsTime = System.nanoTime();
 	//运行模式
 	protected int runMode = 0;
 	private Request currentRequest;
@@ -35,7 +37,8 @@ abstract public class ActionProcessor implements Runnable {
 	 * @param response
 	 */
 	protected String executeAction(Request request, Response response) {
-		request.startTime = this.startTime; //注入请求时间
+		request.startMsTime = this.startMsTime; //注入请求时间
+		request.startNsTime = this.startNsTime; //注入请求时间
 		currentRequest = request; //保存当前请求状态
 		try {
 			//调用业务处理类（Action）
@@ -53,7 +56,13 @@ abstract public class ActionProcessor implements Runnable {
 				actionObj.request = request;
 				actionObj.response = response;
 				try {
-					actionObj.beforeExecute();;
+					//构建Action
+					actionObj.construct();
+					//自动解析POST对象
+					if(request.autoParsePost) {
+						request.parseBody();
+					}
+					actionObj.beforeExecute();
 					if(actionObj.check()) {
 						actionInfo.executeUserMethod(actionObj);
 					} else {

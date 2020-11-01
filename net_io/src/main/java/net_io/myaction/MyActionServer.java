@@ -7,11 +7,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net_io.core.AsyncSocketProcessor;
+import net_io.core.StatNIO;
 import net_io.myaction.ActionProcessor.ProcessorInfo;
 import net_io.myaction.server.MyHttpServer;
 import net_io.myaction.server.MyHttpsServer;
 import net_io.myaction.socket.MyActionSocket;
-import net_io.myaction.socket.WebSocket;
+import net_io.myaction.socket.MyWebSocket;
 import net_io.utils.NetLog;
 import net_io.utils.thread.MyThreadPool;
 import net_io.utils.thread.MyThreadPool.RunTask;
@@ -19,10 +20,9 @@ import net_io.utils.thread.RunnerThread.ThreadInfo;
 
 
 public class MyActionServer {
-	public static final int MAX_POST_LENGTH = 1024 * 1024 * 2;
 	private MyThreadPool producerPool;
 	private MyActionSocket socketServer = null;
-	private WebSocket websocket = null;
+	private MyWebSocket websocket = null;
 	private MyHttpServer httpServer = null;
 	private MyHttpsServer httpsServer = null;
 	private int minPoolSize = 16;
@@ -49,6 +49,7 @@ public class MyActionServer {
 	}
 
 	public void startSslSocketServer(int port) throws IOException {
+		initThreadPool(); //初始化线程池
 		socketServer = new MyActionSocket(producerPool, null);
 		socketServer.bind(port);
 		NetLog.logInfo("ssl socket server started. port: "+port);
@@ -63,14 +64,14 @@ public class MyActionServer {
 
 	public void startWebSocketServer(int port) throws IOException {
 		initThreadPool(); //初始化线程池
-		websocket = new WebSocket(producerPool);
+		websocket = new MyWebSocket(producerPool);
 		websocket.bind(port);
 		NetLog.logInfo("Web Socket server started. port: "+port);
 	}
 	
 	public void startWebSocketSecureServer(int port) throws IOException {
 		initThreadPool(); //初始化线程池
-		websocket = new WebSocket(producerPool, true);
+		websocket = new MyWebSocket(producerPool, true);
 		websocket.bind(port);
 		NetLog.logInfo("Web SSL Socket server started. port: "+port);
 	}
@@ -135,7 +136,7 @@ public class MyActionServer {
 	
 	/**
 	 * 获取核心线程池大小
-	 * @return
+	 * @return int
 	 */
 	public int getMinPoolSize() {
 		return minPoolSize;
@@ -143,7 +144,7 @@ public class MyActionServer {
 
 	/**
 	 * 获取最大工作线程数
-	 * @return
+	 * @return int
 	 */
 	public int getMaxPoolSize() {
 		return maxPoolSize;
@@ -168,11 +169,14 @@ public class MyActionServer {
 
 	public List<RequestInfo> listRequestInfo() {
 		ArrayList<RequestInfo> result = new ArrayList<RequestInfo>();
+		if(producerPool == null) {
+			return result;
+		}
 		for(ThreadInfo threadInfo : producerPool.listThreadInfo()) {
 			RequestInfo data = new RequestInfo();
 			RunTask task = threadInfo.getRunTask();
 			//线程状态
-			data.runTime = threadInfo.getRunTime();
+			data.runNsTime = threadInfo.getRunNsTime();
 			data.status = threadInfo.getStatus();
 			data.runCount = threadInfo.getRunCount();
 			data.path = "-"; //等待解析request并执行Action
@@ -198,7 +202,7 @@ public class MyActionServer {
 	public static class RequestInfo {
 		private String status;
 		private long runCount = 0;
-		private long runTime = 0;
+		private long runNsTime = 0;
 		private String runMode = null;
 		private String path = null;
 		private InetSocketAddress remote = null;
@@ -210,10 +214,17 @@ public class MyActionServer {
 		/**
 		 * 运行时间，单位毫秒
 		 */
-		public long getRunTime() {
-			return runTime;
+		public long getRunMsTime() {
+			return runNsTime / StatNIO.ONE_MILLION_LONG;
 		}
-		
+
+		/**
+		 * 运行时间，单位微秒
+		 */
+		public long getRunUsTime() {
+			return runNsTime / StatNIO.ONE_THOUSAND_LONG;
+		}
+
 		public long getRunCount() {
 			return runCount;
 		}

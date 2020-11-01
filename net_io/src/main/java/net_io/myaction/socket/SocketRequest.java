@@ -7,6 +7,8 @@ import net_io.utils.JSONException;
 import net_io.utils.JSONUtils;
 import net_io.utils.Mixed;
 
+import java.net.ProtocolException;
+
 public class SocketRequest extends Request {
 	public static final int MSG_ID = 0x8301;
 	protected NetChannel channel = null;
@@ -51,12 +53,12 @@ public class SocketRequest extends Request {
 	 * WebSocket请求参数解析
 	 * @param data 格式：用 \t 分割
 	 * 		版本号（16进制数），请求ID（16进制），路径（字符串），JSON格式请求参数
-	 * @param header
+	 * @param channel
 	 * 
-	 * @return
+	 * @return SocketRequest
 	 * @throws JSONException 
 	 */
-	public static SocketRequest parseWebSocket(String data, NetChannel channel) throws JSONException {
+	public static SocketRequest parseWebSocket(String data, NetChannel channel) throws JSONException, ProtocolException {
 		SocketRequest request = new SocketRequest();
 		request.channel = channel;
 		
@@ -65,7 +67,7 @@ public class SocketRequest extends Request {
 		if(pos1 > 0 && pos1 < data.length() - 1) {
 			request.version = Integer.parseInt(data.substring(0, pos1), 16);
 		} else {
-			throw new RuntimeException("formet error.");
+			throw new ProtocolException("WebSocket protocol error: not exist version.");
 		}
 		//第2个字段：请求ID
 		int pos2 = data.indexOf('\t', pos1+1);

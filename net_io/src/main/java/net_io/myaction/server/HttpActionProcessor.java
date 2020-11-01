@@ -10,6 +10,7 @@ import net_io.myaction.ActionProcessor;
 import net_io.myaction.MyActionServer;
 import net_io.myaction.Request;
 import net_io.myaction.Response;
+import net_io.myaction.http.HttpRequest;
 import net_io.utils.NetLog;
 
 public class HttpActionProcessor extends ActionProcessor {
@@ -25,9 +26,7 @@ public class HttpActionProcessor extends ActionProcessor {
 		Request request = null;
 		Response response = new Response();
 		try {
-			request = Request.parse(httpExchange);
-			//解析POST对象
-			request.parseBody(MyActionServer.MAX_POST_LENGTH); //Post Max Length: 2M 
+			request = HttpRequest.parse(httpExchange);
 			//处理Action请求
 			executeAction(request, response);
 		} catch (Exception e) {

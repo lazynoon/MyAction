@@ -1,5 +1,6 @@
 package net_io.myaction;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
@@ -17,8 +18,11 @@ import net_io.utils.Mixed;
 import com.sun.net.httpserver.HttpExchange;
 
 public class Request {
-	protected long startTime = System.currentTimeMillis(); //开始时间的默认值
-	private Map<String, Object> attributes = new LinkedHashMap<String, Object>(); 
+	/** 默认最大解析的 POST 内容长度 **/
+	protected static final int DEFAULT_MAX_POST_LENGTH = 2 * 1024 * 1024;
+	protected long startMsTime = System.currentTimeMillis(); //开始时间的默认值
+	protected long startNsTime = System.nanoTime(); //开始运行的纳秒时间
+	private Map<String, Object> attributes = new LinkedHashMap<String, Object>();
 
 	protected String scheme = null;
 	protected String path = null;
@@ -26,16 +30,19 @@ public class Request {
 	protected InetSocketAddress remoteAddress = null;
 	protected String action = null;
 	protected InputStream in = null;
+
 	protected String clientIP = null;
 	protected String remoteIP = null;
 	protected Mixed params = new Mixed();
 	protected HttpHeaders headers = null;
-	
+	/** 最大POST长度 **/
+	protected int maxPostLength = DEFAULT_MAX_POST_LENGTH;
+	/** 自动解析POST内容 **/
+	protected boolean autoParsePost = false;
 	
 	public Request() {
 	}
 
-	
 	public void setPath(String path) {
 		this.path = path;
 	}
@@ -43,7 +50,23 @@ public class Request {
 	public String getPath() {
 		return path;
 	}
-	
+
+	/** 是否为 HTTP 请求（由子Http请求子类覆盖方法） **/
+	public boolean isHttpRequest() {
+		return false;
+	}
+
+	/**
+	 * 获取输入流
+	 * @return 不含null的InputStream
+	 */
+	public InputStream getInputStream() {
+		if(in == null) {
+			in = new ByteArrayInputStream(new byte[0]);
+		}
+		return in;
+	}
+
 	/**
 	 * 获取HttpHeaders对象
 	 * @return 返回对象总是存在（!=null）
@@ -55,32 +78,10 @@ public class Request {
 		return headers;
 	}
 	
-	public static Request parse(HttpExchange httpExchange) {
-		InputStream in = httpExchange.getRequestBody();
-		URI uri = httpExchange.getRequestURI();
-		Request request = new Request();
-		request.in = in;
-		request.remoteAddress = httpExchange.getRemoteAddress();
-		//取得连接端IP地址
-		request.remoteIP = request.remoteAddress.getAddress().getHostAddress();
-		//HTTP头部对象
-		request.headers = HttpHeaders.newInstance(httpExchange.getRequestHeaders().entrySet());
-		//检查代理IP
-		request.clientIP = getClientIP(request.remoteIP, request.headers);
-		request.scheme = uri.getScheme();
-		request.path = uri.getPath();
-		request.queryString = uri.getRawQuery();
-		
-		//parameter
-		try {
-			QueryStringParser.parse(request.params, request.queryString);
-		} catch (UnsupportedEncodingException e) {
-			throw new RuntimeException(e);
+	public void parseBody() throws IOException {
+		if(in == null) {
+			return;
 		}
-		return request;
-	}
-	
-	public void parseBody(int maxLen) throws IOException {
 		ArrayList<ByteBuffer> buffs = new ArrayList<ByteBuffer>();
 		try {
 			ByteBuffer buff = ByteBufferPool.mallocLarge();
@@ -93,13 +94,13 @@ public class Request {
 				if(b < 0) {
 					break;
 				}
-				if(size >= maxLen) {
-					throw new IOException("[PostLengthException] over post max length: "+maxLen);
+				if(size >= maxPostLength) {
+					throw new IOException("[PostLengthException] over post max length: "+maxPostLength);
 				}
 				if(offset >= capacity) {
 					buff.flip();
-					buffs.add(buff);
 					buff = ByteBufferPool.mallocLarge();
+					buffs.add(buff);
 					offset = 0;
 					capacity = buff.capacity();
 				}
@@ -160,7 +161,15 @@ public class Request {
 	 * @return long
 	 */
 	public long getStartTime() {
-		return this.startTime;
+		return this.startMsTime;
+	}
+
+	/**
+	 * 取得请求时间的纳秒偏移时间
+	 * @return long
+	 */
+	public long getStartNanoTime() {
+		return this.startNsTime;
 	}
 	
 	/**
@@ -251,5 +260,21 @@ public class Request {
 			return remoteIP;
 		}
 
+	}
+
+	public int getMaxPostLength() {
+		return maxPostLength;
+	}
+
+	public void setMaxPostLength(int maxPostLength) {
+		this.maxPostLength = maxPostLength;
+	}
+
+	public boolean isAutoParsePost() {
+		return autoParsePost;
+	}
+
+	public void setAutoParsePost(boolean autoParsePost) {
+		this.autoParsePost = autoParsePost;
 	}
 }

@@ -73,19 +73,47 @@ public class MixedUtils {
 		if(isNumeric(str) == false) return 0;
 		return Float.parseFloat(str);
 	}
-	
+
+	/**
+	 * 是否数字类型
+	 * @param str
+	 * @return boolean
+	 */
 	public static boolean isNumeric(String str) {
-		if(str == null || str.length() == 0  || str.length() > 38) return false;
-		int pointPos = -1;
-		for(int i=0; i<str.length(); i++) {
-			if(str.charAt(i) == '.') {
-				if(pointPos >= 0) return false; //已经出现了一个"."
-				else continue;
-			}
-			char ch = str.charAt(i);
-			if(ch != '-' && (ch < '0' || ch > '9')) return false;
+		if(str == null) {
+			return false;
 		}
-		if(pointPos == 0 || pointPos == str.length()-1) return false; //"."出现在第一位，或者是末尾都是不对的
+		int len = str.length();
+		if(len == 0 || len >= 38) {
+			return false;
+		}
+		int pointPos = -1;
+		int ePos = -1;
+		for(int i=0; i<len; i++) {
+			char ch = str.charAt(i);
+			if(ch >= '0' && ch <= '9') {
+				continue;
+			}
+			if(ch == '-') {
+				if(i != 0) {
+					return false; //负数符号，只能出现在第一个
+				}
+			} else if(ch == '.') {
+				if(i == 0 || pointPos >= 0) {
+					return false; //小数点，不能出现在第一个，也不能重复
+				}
+				pointPos = i;
+			} else if(ch == 'E') {
+				if(i == 0 || ePos >= 0) {
+					return false; //科学计数符号，不能出现在第一个，也不能重复
+				}
+				ePos = i;
+			} else {
+				return false;
+			}
+		}
+		if(pointPos == len-1) return false; //"."出现在第一位，或者是末尾都是不对的
+		if(ePos == len-1) return false; //"E"出现在第一位，或者是末尾都是不对的
 		return true;
 	}
 

@@ -1,70 +1,80 @@
 package net_io.core;
 
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 
 
 public class StreamSocket extends AsyncBaseSocket {
-	private SocketEventHandle handle = null;
 
-	public StreamSocket() {
-		super(initProcessor());
-		StatNIO.streamStat.create_stream_socket.incrementAndGet(); //StatNIO
-	}
-	
+	protected StreamSocket() {}
+
 	public StreamSocket(SocketEventHandle handle) {
-		super(initProcessor());
-		this.handle = handle;
+		super(new MyAsyncSocketProcessor(handle));
 		StatNIO.streamStat.create_stream_socket.incrementAndGet(); //StatNIO
 	}
-	
-	private static AsyncSocketProcessor initProcessor() {
-		return new AsyncSocketProcessor() {
-			
-			@Override
-			public boolean acceptPrecheck(AsyncBaseSocket that, ServerSocket socket) throws Exception {
-				//NetLog.logInfo("acceptPrecheck: "+socket);
-				return true;
-			}
 
-			@Override
-			public void onConnect(NetChannel channel) throws Exception {
-				StatNIO.streamStat.call_on_connect.incrementAndGet(); //StatNIO				
-				((StreamSocket)channel.asyncSocket).onConnect(channel);
-			}
+	protected void init(SocketEventHandle handle) {
+		super.init(new MyAsyncSocketProcessor(handle));
+	}
 
-			@Override
-			public void onReceive(NetChannel channel) throws Exception {
-				StatNIO.streamStat.call_on_receive.incrementAndGet(); //StatNIO				
-				StreamSocket that = ((StreamSocket)channel.asyncSocket);
-				ByteBuffer buff = ByteBufferPool.mallocMiddle();
-				try {
-					int size = channel.socket.read(buff);
-					if(size < 0) { //连接关闭请求
-						that.closeChannel(channel);
-						return; //本轮socket中的数据取完了
-					}
-					buff.flip();
-					//buff.rewind();
-					StatNIO.streamStat.receive_size.addAndGet(buff.limit()); //StatNIO				
-					ByteArray data = new ByteArray(buff.limit());
-					data.append(buff);
-					data.finishWrite();
-					//触发接收事件
-					that.onReceive(channel, data);
-				} finally {
-					//释放 recv buffer
-					ByteBufferPool.free(buff);					
+
+	private static class MyAsyncSocketProcessor extends AsyncSocketProcessor {
+		private SocketEventHandle handle = null;
+		private MyAsyncSocketProcessor(SocketEventHandle handle) {
+			this.handle = handle;
+		}
+
+		@Override
+		public boolean acceptPrecheck(AsyncBaseSocket that, ServerSocket socket) throws Exception {
+			StatNIO.streamStat.call_on_accept.incrementAndGet(); //StatNIO
+			InetAddress address = socket.getInetAddress();
+			if(address == null) {
+				StatNIO.streamStat.accept_error_no_address.incrementAndGet(); //StatNIO
+				return false;
+			}
+			return handle.onAccept(new InetSocketAddress(address, socket.getLocalPort()));
+		}
+
+		@Override
+		public void onConnect(NetChannel channel) throws Exception {
+			StatNIO.streamStat.call_on_connect.incrementAndGet(); //StatNIO
+			handle.onConnect(channel);
+		}
+
+		@Override
+		public void onReceive(NetChannel channel) throws Exception {
+			StatNIO.streamStat.call_on_receive.incrementAndGet(); //StatNIO
+			ByteBuffer buff = ByteBufferPool.mallocMiddle();
+			try {
+				int size = channel.socket.read(buff);
+				if(size < 0) { //连接关闭请求
+					channel.close();
+					return; //本轮socket中的数据取完了
 				}
+				buff.flip();
+				//buff.rewind();
+				StatNIO.streamStat.receive_size.addAndGet(buff.limit()); //StatNIO
+				ByteArray data = new ByteArray(buff.limit());
+				data.append(buff);
+				data.finishWrite();
+				//触发接收事件
+				StatNIO.streamStat.default_on_receive.incrementAndGet(); //StatNIO
+				handle.onReceive(channel, data);
+			} finally {
+				//释放 recv buffer
+				ByteBufferPool.free(buff);
 			}
+		}
 
-			@Override
-			public void onClose(NetChannel channel) throws Exception {
-				StatNIO.streamStat.call_on_close.incrementAndGet(); //StatNIO
-				((StreamSocket)channel.asyncSocket).onClose(channel);
-			}
-			
-		};
+		@Override
+		public void onClose(NetChannel channel) throws Exception {
+			StatNIO.streamStat.call_on_close.incrementAndGet(); //StatNIO
+			handle.onClose(channel);
+		}
+
 	}
 	
 //	public void send(NetChannel channel, ByteArray data) throws IOException {
@@ -79,28 +89,5 @@ public class StreamSocket extends AsyncBaseSocket {
 //		channel._send(data);
 //	}
 //	
-	public boolean onAccept(ServerSocket socket) throws Exception {
-		StatNIO.streamStat.default_on_accept.incrementAndGet(); //StatNIO
-		return true;
-	}
-	
-	public void onConnect(NetChannel channel) throws Exception {
-		StatNIO.streamStat.default_on_connect.incrementAndGet(); //StatNIO
-		if(handle != null) {
-			handle.onConnect(channel);
-		}
-	}
-	public void onClose(NetChannel channel) throws Exception {
-		StatNIO.streamStat.default_on_close.incrementAndGet(); //StatNIO
-		if(handle != null) {
-			handle.onClose(channel);
-		}
-	}
-	
-	public void onReceive(NetChannel channel, ByteArray data) throws Exception {
-		StatNIO.streamStat.default_on_receive.incrementAndGet(); //StatNIO
-		if(handle != null) {
-			handle.onReceive(channel, data);
-		}
-	}
+
 }
