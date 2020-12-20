@@ -33,35 +33,56 @@ import java.util.zip.GZIPOutputStream;
 
 public class EncodeUtils {
 
-	/** 支持http协议 **/
-	private static byte[] encodeHttp64Map = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".getBytes(Charsets.UTF_8);
+	/** 支持http协议的62进制编码 **/
+	private static byte[] encodeHttp62Map = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".getBytes(Charsets.ISO_8859_1);
+	private static final byte[] decodeHttp62Map = new byte[256];
+	private static final long[] encodingHttp62Mode = {1L, 62L, 62L*62L, 62L*62L*62L, 62L*62L*62L*62L, 62L*62L*62L*62L*62L, 62L*62L*62L*62L*62L*62L};
+	/** 支持http协议的64进制编码 **/
+	private static byte[] encodeHttp64Map = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".getBytes(Charsets.ISO_8859_1);
 	private static final byte[] decodeHttp64Map = new byte[127];
-	private static byte[] encodeBase64Map = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".getBytes(Charsets.UTF_8);
+	/** 支持http协议的32进制编码 **/
+	private static byte[] encodeHttp32Map = "0123456789abcdefghjkmnpqrstuvxyz".getBytes(Charsets.ISO_8859_1);
+	private static final byte[] decodeHttp32Map = new byte[127];
+	/** 标准base64编码 **/
+	private static byte[] encodeBase64Map = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".getBytes(Charsets.ISO_8859_1);
 	private static final byte[] decodeBase64Map = new byte[127];
 	private static final byte base64BackfillChar = '=';
-	private static byte[] encode32Map = "0123456789abcdefghjkmnpqrstuvxyz".getBytes(Charsets.UTF_8);
-	private static final byte[] decode32Map = new byte[127];
+	/** bit位掩码 **/
 	private static int[] bitMask = {0, 1, 3, 7, 15, 31, 63, 127};
+	/** long型1字节未掩码 **/
+	private static final long MASK_1_BYTE_LONG = 0xFFL;
+	/** 自增量 **/
 	private static AtomicLong autoIncrement = new AtomicLong(0);
-	
+
+
 	static {
+		//32进制编码
+		for(int i=0; i<decodeHttp32Map.length; i++) {
+			decodeHttp32Map[i] = -1;
+		}
+		for(int i=0; i<encodeHttp32Map.length; i++) {
+			decodeHttp32Map[encodeHttp32Map[i]] = (byte)i;
+		}
+		//62进制编码
+		for(int i=0; i<decodeHttp62Map.length; i++) {
+			decodeHttp62Map[i] = -1;
+		}
+		for(int i=0; i<encodeHttp62Map.length; i++) {
+			decodeHttp62Map[encodeHttp62Map[i]] = (byte)i;
+		}
+		//64进制编码
 		for(int i=0; i<decodeHttp64Map.length; i++) {
 			decodeHttp64Map[i] = -1;
 		}
 		for(int i=0; i<encodeHttp64Map.length; i++) {
 			decodeHttp64Map[encodeHttp64Map[i]] = (byte)i;
 		}
+		//base64编码
 		for(int i=0; i<decodeBase64Map.length; i++) {
 			decodeBase64Map[i] = -1;
 		}
 		for(int i=0; i<encodeBase64Map.length; i++) {
 			decodeBase64Map[encodeBase64Map[i]] = (byte)i;
-		}
-		for(int i=0; i<decode32Map.length; i++) {
-			decode32Map[i] = -1;
-		}
-		for(int i=0; i<encode32Map.length; i++) {
-			decode32Map[encode32Map[i]] = (byte)i;
 		}
 	}
 	
@@ -191,6 +212,95 @@ public class EncodeUtils {
 		}
 	}
 
+	/**
+	 * 按62进制编码（编码率：7/5）
+	 * @param bts 二进制数组
+	 * @return 编码字符范围：0-9A-Za-z
+	 */
+	public static String encodeHttp62(byte[] bts) {
+		if(bts == null) {
+			return null;
+		}
+		int mode = bts.length % 5;
+		if(mode >= 3) {
+			mode += 2;
+		} else if(mode >= 1) {
+			mode++;
+		}
+		byte[] buff = new byte[bts.length / 5 * 7 + mode];
+		int offset = 0;
+		for(int loop=0; loop<bts.length; loop+=5) {
+			int byteCount = bts.length - loop;
+			if(byteCount > 5) {
+				byteCount = 5;
+			}
+			int modeOffset = byteCount;
+			if(byteCount >= 3) {
+				modeOffset += 2;
+			} else {
+				modeOffset++;
+			}
+			int moveBit = (byteCount - 1) * 8;
+			long num = 0;
+			for(int i=loop; i<bts.length && moveBit >= 0; i++) {
+				num |= (bts[i] & MASK_1_BYTE_LONG) << moveBit;
+				moveBit -= 8;
+			}
+			for(int i=1; i<modeOffset; i++) {
+				buff[offset++] = encodeHttp62Map[(int) (num / encodingHttp62Mode[modeOffset - i])];
+				num %= encodingHttp62Mode[modeOffset - i];
+			}
+			buff[offset++] = encodeHttp62Map[(int) (num % 62L)];
+		}
+		return new String(buff, Charsets.ISO_8859_1);
+	}
+
+	/**
+	 * 按62进制编码（编码率：7/5）
+	 * @param str 62进制编码的字字符串（编码字符范围：0-9A-Za-z）
+	 * @return 解密的字节数组
+	 */
+	public static byte[] decodeHttp62(String str) {
+		if(str == null) {
+			return null;
+		}
+		byte[] bts = str.getBytes(Charsets.ISO_8859_1);
+		int mode = bts.length % 7;
+		if(mode >= 5) {
+			mode -= 2;
+		} else if(mode >= 1) {
+			mode--;
+		}
+		byte[] buff = new byte[bts.length / 7 * 5 + mode];
+		int offset = 0;
+		for(int loop=0; loop<bts.length; loop+=7) {
+			int byteCount = bts.length - loop;
+			if(byteCount > 7) {
+				byteCount = 7;
+			}
+			long num = 0;
+			for(int i=0; i<byteCount; i++) {
+				int chNum = decodeHttp62Map[bts[loop+i] & 0xFF];
+				if(chNum >= 0) {
+					num += chNum * encodingHttp62Mode[byteCount - i - 1];
+				} else {
+					//TODO
+				}
+			}
+			int modeOffset = byteCount;
+			if(byteCount >= 5) {
+				modeOffset -= 2;
+			} else {
+				modeOffset--;
+			}
+			int moveBit = (modeOffset - 1) * 8;
+			for(; moveBit>=0; moveBit-=8) {
+				buff[offset++] = (byte) ((num >>> moveBit) & MASK_1_BYTE_LONG);
+			}
+		}
+		return buff;
+	}
+
 	/** 支持HTTP协议的base64编码（字符升序，扩展字符用用".-"代替） **/
 	public static byte[] encodeHttp64(byte[] bts) {
 		return _encodeBase64(encodeHttp64Map, bts, false);
@@ -269,14 +379,14 @@ public class EncodeUtils {
 			if(prevBitCount > 0) {
 				numIndex |= (byte)(prevBitNum << (5 - prevBitCount));
 			}
-			buff[offset++] = encode32Map[numIndex];
+			buff[offset++] = encodeHttp32Map[numIndex];
 			if(nextBitCount > 5) {
 				numIndex = (nextBitNum >>> (nextBitCount-5)) & bitMask[7];
-				buff[offset++] = encode32Map[numIndex];
+				buff[offset++] = encodeHttp32Map[numIndex];
 				prevBitCount = nextBitCount - 5;
 				prevBitNum = nextBitNum & bitMask[prevBitCount];
 			} else if(nextBitCount == 5) {
-				buff[offset++] = encode32Map[nextBitNum];
+				buff[offset++] = encodeHttp32Map[nextBitNum];
 				prevBitCount = 0;
 				prevBitNum = 0;
 			} else {
@@ -285,7 +395,7 @@ public class EncodeUtils {
 			}
 		}
 		if(prevBitCount > 0) {
-			buff[offset++] = encode32Map[prevBitNum << (5 - prevBitCount)];
+			buff[offset++] = encodeHttp32Map[prevBitNum << (5 - prevBitCount)];
 		}
 		return buff;
 	}
@@ -302,8 +412,8 @@ public class EncodeUtils {
 		for(int i=0; i<bts.length; i++) {
 			int ch = bts[i] & 0xFF;
 			int num = 0; //默认为0
-			if(ch < decode32Map.length && decode32Map[ch] > 0) {
-				num = decode32Map[ch];
+			if(ch < decodeHttp32Map.length && decodeHttp32Map[ch] > 0) {
+				num = decodeHttp32Map[ch];
 			}
 			if(prevBitCount == 0) {
 				buff[offset] = (byte) (num << 3);
