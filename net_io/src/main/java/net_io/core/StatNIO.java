@@ -16,6 +16,8 @@ public class StatNIO {
 	public final static double ONE_THOUSAND_DOUBLE = 1000.0;
 	/** 十进制双精度浮点数：1百万 **/
 	public final static double ONE_MILLION_DOUBLE = 1000000.0;
+	/** 十进制双精度浮点数：10亿 **/
+	public final static double ONE_BILLION_DOUBLE = 1000000000.0;
 
 	/** 启动时间 **/
 	public final static Date startTime = new Date();

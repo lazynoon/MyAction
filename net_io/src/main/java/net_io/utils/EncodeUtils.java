@@ -34,9 +34,9 @@ import java.util.zip.GZIPOutputStream;
 public class EncodeUtils {
 
 	/** 支持http协议的62进制编码 **/
-	private static byte[] encodeHttp62Map = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".getBytes(Charsets.ISO_8859_1);
-	private static final byte[] decodeHttp62Map = new byte[256];
-	private static final long[] encodingHttp62Mode = {1L, 62L, 62L*62L, 62L*62L*62L, 62L*62L*62L*62L, 62L*62L*62L*62L*62L, 62L*62L*62L*62L*62L*62L};
+	private static byte[] myBase62EncodeMap = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".getBytes(Charsets.ISO_8859_1);
+	private static final byte[] myBase62DecodeMap = new byte[256];
+	private static final long[] myBase62Mode = {1L, 62L, 62L*62L, 62L*62L*62L, 62L*62L*62L*62L, 62L*62L*62L*62L*62L, 62L*62L*62L*62L*62L*62L};
 	/** 支持http协议的64进制编码 **/
 	private static byte[] encodeHttp64Map = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".getBytes(Charsets.ISO_8859_1);
 	private static final byte[] decodeHttp64Map = new byte[127];
@@ -64,11 +64,11 @@ public class EncodeUtils {
 			decodeHttp32Map[encodeHttp32Map[i]] = (byte)i;
 		}
 		//62进制编码
-		for(int i=0; i<decodeHttp62Map.length; i++) {
-			decodeHttp62Map[i] = -1;
+		for(int i=0; i<myBase62DecodeMap.length; i++) {
+			myBase62DecodeMap[i] = -1;
 		}
-		for(int i=0; i<encodeHttp62Map.length; i++) {
-			decodeHttp62Map[encodeHttp62Map[i]] = (byte)i;
+		for(int i=0; i<myBase62EncodeMap.length; i++) {
+			myBase62DecodeMap[myBase62EncodeMap[i]] = (byte)i;
 		}
 		//64进制编码
 		for(int i=0; i<decodeHttp64Map.length; i++) {
@@ -217,7 +217,7 @@ public class EncodeUtils {
 	 * @param bts 二进制数组
 	 * @return 编码字符范围：0-9A-Za-z
 	 */
-	public static String encodeHttp62(byte[] bts) {
+	public static String myBase62Encode(byte[] bts) {
 		if(bts == null) {
 			return null;
 		}
@@ -247,10 +247,10 @@ public class EncodeUtils {
 				moveBit -= 8;
 			}
 			for(int i=1; i<modeOffset; i++) {
-				buff[offset++] = encodeHttp62Map[(int) (num / encodingHttp62Mode[modeOffset - i])];
-				num %= encodingHttp62Mode[modeOffset - i];
+				buff[offset++] = myBase62EncodeMap[(int) (num / myBase62Mode[modeOffset - i])];
+				num %= myBase62Mode[modeOffset - i];
 			}
-			buff[offset++] = encodeHttp62Map[(int) (num % 62L)];
+			buff[offset++] = myBase62EncodeMap[(int) (num % 62L)];
 		}
 		return new String(buff, Charsets.ISO_8859_1);
 	}
@@ -260,7 +260,7 @@ public class EncodeUtils {
 	 * @param str 62进制编码的字字符串（编码字符范围：0-9A-Za-z）
 	 * @return 解密的字节数组
 	 */
-	public static byte[] decodeHttp62(String str) {
+	public static byte[] myBase62Decode(String str) {
 		if(str == null) {
 			return null;
 		}
@@ -280,9 +280,9 @@ public class EncodeUtils {
 			}
 			long num = 0;
 			for(int i=0; i<byteCount; i++) {
-				int chNum = decodeHttp62Map[bts[loop+i] & 0xFF];
+				int chNum = myBase62DecodeMap[bts[loop+i] & 0xFF];
 				if(chNum >= 0) {
-					num += chNum * encodingHttp62Mode[byteCount - i - 1];
+					num += chNum * myBase62Mode[byteCount - i - 1];
 				} else {
 					//TODO
 				}
