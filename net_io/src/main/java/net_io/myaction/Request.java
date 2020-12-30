@@ -204,7 +204,7 @@ public class Request {
 	}
 	
 	public Session getSession() {
-		return new Session();
+		return Session.newInstance();
 	}
 	
 	/**
