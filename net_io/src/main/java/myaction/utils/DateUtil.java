@@ -9,23 +9,7 @@ import net_io.utils.MixedUtils;
 
 
 public class DateUtil extends DateUtils {
-	/** 1秒对应的毫秒数（1秒） **/
-	public final static long ONE_SECOND_MS = 1000;
-	/** 1分对应的毫秒数（1分钟） **/
-	public final static long ONE_MINUTE_MS = 60 * ONE_SECOND_MS;
-	/** 1小时对应的毫秒数（1小时） **/
-	public final static long ONE_HOUR_MS = 3600 * ONE_SECOND_MS;
-	/** 1天时间段的毫秒数（1天） **/
-	public final static long ONE_DAY_MS = 86400 * ONE_SECOND_MS;
-	/** 1年时间段的毫秒数（按366天计算） **/
-	public final static long ONE_YEAR_MS = 366 * ONE_DAY_MS;
-	/** 1个月时间段的毫秒数（按31天计算） **/
-	public final static long ONE_MONTH_MS = 31 * ONE_DAY_MS;
-	/** 1周时间段的毫秒数（7天） **/
-	public final static long ONE_WEEK_MS = 7 * ONE_DAY_MS;
-	/** 少1秒的时间（999毫秒） **/
-	public final static long LESS_ONE_SECOND = 999;
-	
+
 	public static long toUnixTime(String datetime) {
 		if(datetime == null) {
 			return 0;

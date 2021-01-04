@@ -1,8 +1,10 @@
 package net_io.myaction;
 
+import myaction.utils.LogUtil;
 import net_io.utils.ByteUtils;
 import net_io.utils.EncodeUtils;
 import net_io.utils.Mixed;
+import net_io.utils.NetLog;
 
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -28,8 +30,6 @@ public class Session {
 	private Mixed data = new Mixed();
 	/** Session Id 解析错误（仅在创建Session对象时使用，null表示成功） **/
 	private String parseError = null;
-	/** Session序列化签名密钥 **/
-	private long hashCodeKey;
 	/** 字符串类型的Session ID **/
 	private String sessionIdString;
 	/** 字节数组类型的Session ID **/
@@ -38,6 +38,8 @@ public class Session {
 	private int markedSessionDataLength = -1;
 	/** 标记的会话数据长度 **/
 	private String markedSessionDataHash = null;
+	/** 是否为全新创建的Session（从已有的会话ID创建Session作为旧Session） **/
+	private boolean isNewSession = true;
 
 	private Session() {}
 
@@ -48,7 +50,8 @@ public class Session {
 	public static Session newInstance() {
 		Session session = new Session();
 		session.sessionIdBytes = generateSessionIdBytes();
-		session.sessionIdString = EncodeUtils.myBase62Encode(session.sessionIdBytes);
+		session.sessionIdString = EncodeUtils.myBase62Encode(outOrderEncode(session.sessionIdBytes));
+		session.markSessionForSave();
 		return session;
 	}
 
@@ -69,6 +72,8 @@ public class Session {
 	 */
 	public static Session newInstance(String sessionId, boolean checkHashCode) {
 		Session session = uncheckParseSessionId(sessionId, defaultHashCodeKey, checkHashCode);
+		session.isNewSession = false;
+		session.markSessionForSave();
 		if(session.parseError != null) {
 			throw new RuntimeException(session.parseError);
 		}
@@ -168,7 +173,7 @@ public class Session {
 	 * @return Session创建时间
 	 */
 	public long getSessionCreateTime() {
-		return ByteUtils.parseLongAsBigEndian(sessionIdBytes, 0, 6);
+		return ByteUtils.parseLongAsBigEndian(sessionIdBytes, 0, 6) >> 4;
 	}
 
 	/**
@@ -193,6 +198,14 @@ public class Session {
 	 */
 	public boolean isSessionEmpty() {
 		return data.isSelfEmpty();
+	}
+
+	/**
+	 * 是否为新创建的Session（新生成的Session Id作为新创建）
+	 * @return true OR false
+	 */
+	public boolean isSessionNew() {
+		return isNewSession;
 	}
 
 	/**
@@ -237,17 +250,6 @@ public class Session {
 	}
 
 	/**
-	 * Session数据集序列化
-	 * @return JSON格式字符串，非空，空对象返回 {}
-	 */
-	public String serializeSessionData() {
-		if(data.isSelfEmpty()) {
-			return "{}";
-		}
-		return data.toJSON();
-	}
-
-	/**
 	 * 检查 Session ID 是否正确（当 ignoreHashCodeInvalid=false，则忽略 hashCode 检验）
 	 * @param sessionId 会话ID
 	 * @return true OR false
@@ -260,26 +262,27 @@ public class Session {
 		if(bts == null || bts.length != SESSION_ID_PLAINTEXT_LENGTH) {
 			return false;
 		}
+		bts = outOrderDecode(bts);
 		int hashCode = ByteUtils.parseIntAsBigEndian(bts, SESSION_ID_PLAINTEXT_LENGTH - 3, 3);
 		return hashCode == calculateHashCode(bts, hashCodeKey);
 	}
 
 	/**
-	 * 标记Session数据集的哈希值
-	 * @return Session数据集的哈希值（MD5编码）
+	 * 标记Session数据集的哈希值并返回当前序列化的值
+	 * @return JSON格式字符串，非空，空对象返回 {}
 	 */
-	public String markSessionDataHash() {
+	public String markSessionForSave() {
 		String str = toMarkDataString();
 		markedSessionDataLength = str.length();
 		markedSessionDataHash = EncodeUtils.md5(str);
-		return markedSessionDataHash;
+		return str;
 	}
 
 	/**
 	 * 距离上次标记，Session数据是否已改变
 	 * @return 从未标记或Session数据改变则返回true，否则返回false
 	 */
-	public boolean isSessionDataChange() {
+	public boolean isSessionChanged() {
 		String str = toMarkDataString();
 		if(markedSessionDataLength != str.length()) {
 			return true;
@@ -292,13 +295,11 @@ public class Session {
 
 	/** 返回用于生成数据集哈希的字符串 **/
 	private String toMarkDataString() {
-		String str;
 		if(data.isSelfEmpty()) {
-			str = "";
+			return "{}";
 		} else {
-			str = data.toJSON();
+			return data.toJSON();
 		}
-		return str;
 	}
 
 	/**
@@ -310,7 +311,6 @@ public class Session {
 	 */
 	private static Session uncheckParseSessionId(String sessionId, long hashCodeKey, boolean checkHashCode) {
 		Session session = new Session();
-		session.hashCodeKey = hashCodeKey;
 		if (sessionId == null || sessionId.length() != SESSION_ID_ENCODED_LENGTH) {
 			session.parseError = "Session Id length is not " + SESSION_ID_ENCODED_LENGTH + ".";
 			return session;
@@ -321,8 +321,9 @@ public class Session {
 			session.parseError = "Session Id encoding error.";
 			return session;
 		}
+		session.sessionIdBytes = outOrderDecode(session.sessionIdBytes);
 		if (checkHashCode) {
-			if (!session.isSessionIdHashValid()) {
+			if (!session.isSessionIdHashValid(hashCodeKey)) {
 				session.parseError = "Session Id hash code error.";
 				return session;
 			}
@@ -351,8 +352,8 @@ public class Session {
 		nanoTime ^= nanoTime >>> 16;
 		nanoTime ^= nanoTime >>> 8;
 		offset = ByteUtils.writeNumberAsBigEndian(createTime, buff, offset, 6);
-		offset = ByteUtils.writeNumberAsBigEndian(randNum1, buff, offset, 4);
 		offset = ByteUtils.writeNumberAsBigEndian(seqNo, buff, offset, 1);
+		offset = ByteUtils.writeNumberAsBigEndian(randNum1, buff, offset, 4);
 		offset = ByteUtils.writeNumberAsBigEndian(nanoTime, buff, offset, 1);
 		offset = ByteUtils.writeNumberAsBigEndian(randNum2, buff, offset, 4);
 		offset = ByteUtils.writeNumberAsBigEndian(defaultHashCodeKeyId, buff, offset, 1);
@@ -369,8 +370,8 @@ public class Session {
 	 */
 	private static int calculateHashCode(byte[] sessionIdBytes, long hashCodeKey) {
 		long num1 = ByteUtils.parseLongAsBigEndian(sessionIdBytes, 0, 6);
-		long num2 = ByteUtils.parseLongAsBigEndian(sessionIdBytes, 0, 5);
-		long num3 = ByteUtils.parseLongAsBigEndian(sessionIdBytes, 0, 6);
+		long num2 = ByteUtils.parseLongAsBigEndian(sessionIdBytes, 6, 5);
+		long num3 = ByteUtils.parseLongAsBigEndian(sessionIdBytes, 11, 6);
 		num1 ^= hashCodeKey;
 		num2 ^= hashCodeKey;
 		num3 ^= hashCodeKey;
@@ -381,5 +382,57 @@ public class Session {
 		num ^= num >>> 33;
 		num &= 0xFFFFFFL;
 		return (int) num;
+	}
+
+	private static byte[] outOrderEncode(byte[] buff) {
+		int lastPos = buff.length - 1;
+		int halfCount = buff.length / 2;
+		//加密前部
+		for (int i=0; i<halfCount; i+=2) {
+			buff[i] ^= buff[lastPos-i];
+		}
+		//间隔交换
+		for (int i=0; i<halfCount; i+=2) {
+			byte t = buff[i];
+			buff[i] = buff[halfCount+i];
+			buff[halfCount+i] = t;
+		}
+		//位移
+		int prevNum = buff[0] & 0xFF;
+		int num;
+		for (int i=1; i<buff.length; i++) {
+			num = buff[i] & 0xFF;
+			buff[i] = (byte) ((num >>> 3) | (prevNum << 5));
+			prevNum = num;
+		}
+		num = buff[0] & 0xFF;
+		buff[0] = (byte) ((num >>> 3) | (prevNum << 5));
+		return buff;
+	}
+
+	private static byte[] outOrderDecode(byte[] buff) {
+		int lastPos = buff.length - 1;
+		int halfCount = buff.length / 2;
+		//位移
+		int firstNum = buff[0] & 0xFF;
+		int num;
+		for (int i=0; i<lastPos; i++) {
+			num = buff[i] & 0xFF;
+			int nextNum = buff[i + 1] & 0xFF;
+			buff[i] = (byte) ((num << 3) | (nextNum >>> 5));
+		}
+		num = buff[lastPos] & 0xFF;
+		buff[lastPos] = (byte) ((num << 3) | (firstNum >>> 5));
+		//间隔交换
+		for (int i=0; i<halfCount; i+=2) {
+			byte t = buff[i];
+			buff[i] = buff[halfCount+i];
+			buff[halfCount+i] = t;
+		}
+		//解密前部
+		for (int i=0; i<halfCount; i+=2) {
+			buff[i] ^= buff[lastPos-i];
+		}
+		return buff;
 	}
 }
