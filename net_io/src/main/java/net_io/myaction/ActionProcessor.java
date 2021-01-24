@@ -71,6 +71,9 @@ abstract public class ActionProcessor implements Runnable {
 					}
 				} catch (CheckException e) {
 					actionObj.setLastActionException(e); //保存最新的Action异常
+					if (e.getData() != null) {
+						response.resetData(e.getData());
+					}
 					response.setError(e.getError(), e.getReason());
 				} catch (Exception e) {
 					actionObj.setLastActionException(e); //保存最新的Action异常
