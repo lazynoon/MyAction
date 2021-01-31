@@ -135,7 +135,21 @@ public class Request {
 			}
 		}
 	}
-	
+
+	/**
+	 * 检查是否存在请求参数
+	 * @param name 参数名称
+	 * @return true OR false
+	 */
+	public boolean hasParameter(String name) {
+		return params.containsKey(name);
+	}
+
+	/**
+	 * 获取请求参数
+	 * @param name 参数名称
+	 * @return 参数值（不存在，返回空字符串，不返回null）
+	 */
 	public String getParameter(String name) {
 		return params.getString(name);
 	}
