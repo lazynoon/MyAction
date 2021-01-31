@@ -1,11 +1,6 @@
 package myaction.action;
 
-import myaction.action.monitor.LifeConsoleAction;
-import myaction.action.monitor.EchoRequestAction;
-import myaction.action.monitor.JsqlxAction;
-import myaction.action.monitor.RunStatusAction;
-import myaction.action.monitor.ServerStatusAction;
-import myaction.action.monitor.ServerTimeAction;
+import myaction.action.monitor.*;
 import myaction.extend.ActionRegister;
 import myaction.extend.BaseServiceAction;
 
@@ -24,8 +19,7 @@ public class MyMonitorActionRegister extends ActionRegister {
 		this.register("myaction/runStatus", RunStatusAction.class);
 		this.register("myaction/serverStatus", ServerStatusAction.class);
 		this.register("myaction/serverTime", ServerTimeAction.class);
-		this.register(BaseServiceAction.class);
-		this.register(BaseServiceAction.class);
-
+		this.register("myaction/lastLog", LastLogAction.class);
+		//this.register(BaseServiceAction.class);
 	}
 }
