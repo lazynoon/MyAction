@@ -50,15 +50,16 @@ public class Mixed {
 	/**
 	 * 获取字符串的值。默认为空字符串
 	 * @param key
-	 * @return String
+	 * @return 不存在时，返回空字符串
 	 */
 	public String getString(String key) {
 		return getString(key, "");
 	}
+
 	/**
 	 * 获取字符串的值
-	 * @param key
-	 * @param defaultValue
+	 * @param key KEY
+	 * @param defaultValue 默认值（不存在时返回）
 	 * @return String
 	 */
 	public String getString(String key, String defaultValue) {
@@ -66,9 +67,18 @@ public class Mixed {
 		if(result == null || result.data == null) {
 			return defaultValue;
 		}
-		return result.data.toString();
+		if (result.data instanceof String) {
+			return (String) result.data;
+		} else {
+			return result.data.toString();
+		}
 	}
-	
+
+	/**
+	 * 获取 byte[] 字节数组对象
+	 * @param key KEY
+	 * @return 不存在返回null；原保存的对象并非 byte[] 类型时，先转成 String 类型再取 byte 数组
+	 */
 	public byte[] getBytes(String key) {
 		Mixed ret = _get(key);
 		if(ret == null || ret.data == null) {
@@ -79,20 +89,50 @@ public class Mixed {
 		}
 		return ret.data.toString().getBytes();
 	}
+
+	/**
+	 * 获取 short 类型的值
+	 * @param key KEY
+	 * @return 不存在时，返回 0
+	 */
 	public short getShort(String key) {
-		return MixedUtils.parseShort(getString(key));
-	}
-	
-	public int getInt(String key) {
-		return MixedUtils.parseInt(getString(key));
-	}
-	
-	public double getDouble(String key) {
-		return MixedUtils.parseDouble(getString(key));
+		return MixedUtils.parseShort(getString(key, ""));
 	}
 
+	/**
+	 * 获取 int 类型的值
+	 * @param key KEY
+	 * @return 不存在时，返回 0
+	 */
+	public int getInt(String key) {
+		return MixedUtils.parseInt(getString(key, ""));
+	}
+
+	/**
+	 * 获取 long 类型的值
+	 * @param key KEY
+	 * @return 不存在时，返回 0
+	 */
+	public long getLong(String key) {
+		return MixedUtils.parseLong(getString(key, ""));
+	}
+
+	/**
+	 * 获取 float 类型的值
+	 * @param key KEY
+	 * @return 不存在时，返回 0
+	 */
 	public float getFloat(String key) {
-		return MixedUtils.parseFloat(getString(key));
+		return MixedUtils.parseFloat(getString(key, ""));
+	}
+
+	/**
+	 * 获取 double 类型的值
+	 * @param key KEY
+	 * @return 不存在时，返回 0
+	 */
+	public double getDouble(String key) {
+		return MixedUtils.parseDouble(getString(key, ""));
 	}
 
 	/**

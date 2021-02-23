@@ -114,7 +114,7 @@ public class Session {
 	}
 
 	/**
-	 * 从Session对象取值
+	 * 从Session对象取值（Mixed类型）
 	 * @param key KEY
 	 * @return 不存在返回 null
 	 */
@@ -291,6 +291,51 @@ public class Session {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * 从Session对象取String值
+	 * @param key KEY
+	 * @return 不存在返回 空字符串
+	 */
+	public String getStringValue(String key) {
+		return data.getString(key);
+	}
+
+	/**
+	 * 从Session对象取 int 值
+	 * @param key KEY
+	 * @return 不存在返回 0
+	 */
+	public int getIntValue(String key) {
+		return data.getInt(key);
+	}
+
+	/**
+	 * 从Session对象取 long 值
+	 * @param key KEY
+	 * @return 不存在返回 0
+	 */
+	public long getLongValue(String key) {
+		return data.getLong(key);
+	}
+
+	/**
+	 * 从Session对象取 float 值
+	 * @param key KEY
+	 * @return 不存在返回 0
+	 */
+	public float getFloatValue(String key) {
+		return data.getFloat(key);
+	}
+
+	/**
+	 * 从Session对象取 double 值
+	 * @param key KEY
+	 * @return 不存在返回 0
+	 */
+	public double getDoubleValue(String key) {
+		return data.getDouble(key);
 	}
 
 	/** 返回用于生成数据集哈希的字符串 **/
