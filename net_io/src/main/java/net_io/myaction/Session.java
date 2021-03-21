@@ -173,7 +173,7 @@ public class Session {
 	 * @return Session创建时间
 	 */
 	public long getSessionCreateTime() {
-		return ByteUtils.parseLongAsBigEndian(sessionIdBytes, 0, 6) >> 4;
+		return ByteUtils.parseLongAsBigEndian(sessionIdBytes, 0, 6) >>> 4;
 	}
 
 	/**
@@ -429,7 +429,9 @@ public class Session {
 		return (int) num;
 	}
 
-	private static byte[] outOrderEncode(byte[] buff) {
+	private static byte[] outOrderEncode(byte[] bts) {
+		byte[] buff = new byte[bts.length];
+		System.arraycopy(bts, 0, buff, 0, bts.length);
 		int lastPos = buff.length - 1;
 		int halfCount = buff.length / 2;
 		//加密前部
@@ -455,7 +457,9 @@ public class Session {
 		return buff;
 	}
 
-	private static byte[] outOrderDecode(byte[] buff) {
+	private static byte[] outOrderDecode(byte[] bts) {
+		byte[] buff = new byte[bts.length];
+		System.arraycopy(bts, 0, buff, 0, bts.length);
 		int lastPos = buff.length - 1;
 		int halfCount = buff.length / 2;
 		//位移
