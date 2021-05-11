@@ -1,5 +1,22 @@
 package net_io.utils;
 
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.*;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+
 public class MixedUtils {
 	public static String trim(String str) {
 		if(str == null) return "";
@@ -116,5 +133,169 @@ public class MixedUtils {
 		if(ePos == len-1) return false; //"E"出现在第一位，或者是末尾都是不对的
 		return true;
 	}
+
+	/**
+	 * 严格模式检查，是否为 int 类型字符串
+	 * @param str 数字字符串
+	 * @return true为int类型（可安全转换为Integer对象），false非int类型
+	 */
+	public static boolean isInt(String str) {
+		try {
+			Integer.parseInt(str);
+			return true;
+		} catch (NumberFormatException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 严格模式检查，是否为 long 类型字符串
+	 * @param str 数字字符串
+	 * @return true为long类型（可安全转换为Long对象），false非long类型
+	 */
+	public static boolean isLong(String str) {
+		try {
+			Long.parseLong(str);
+			return true;
+		} catch (NumberFormatException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 严格模式检查，是否为 float 类型字符串
+	 * @param str 数字字符串
+	 * @return true为float类型（可安全转换为Float对象），false非float类型
+	 */
+	public static boolean isFloat(String str) {
+		try {
+			Float.parseFloat(str);
+			return true;
+		} catch (NumberFormatException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 严格模式检查，是否为 double 类型字符串
+	 * @param str 数字字符串
+	 * @return true为double类型（可安全转换为Double对象），false非double类型
+	 */
+	public static boolean isDouble(String str) {
+		try {
+			Double.parseDouble(str);
+			return true;
+		} catch (NumberFormatException e) {
+			return false;
+		}
+	}
+
+	public static String formatSimpleXml(Mixed data) throws ParserConfigurationException, TransformerException {
+		return formatSimpleXml(data, null);
+	}
+
+	public static String formatSimpleXml(Mixed data, String rootNodeName) throws ParserConfigurationException, TransformerException {
+		Document doc = JSONUtils.toDOM(data, rootNodeName);
+		TransformerFactory ft = TransformerFactory.newInstance();
+		Transformer transformer = ft.newTransformer();
+		transformer.setOutputProperty("encoding", "UTF-8");
+		transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+		transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
+		ByteArrayOutputStream bos = new ByteArrayOutputStream();
+		transformer.transform(new DOMSource(doc), new StreamResult(bos));
+		return bos.toString();
+	}
+
+	public static Mixed parseSimpleXml(String content) throws ParserConfigurationException, SAXException {
+		return parseSimpleXml(new ByteArrayInputStream(content.getBytes(EncodeUtils.Charsets.UTF_8)));
+	}
+
+	public static Mixed parseSimpleXml(InputStream content) throws ParserConfigurationException, SAXException {
+		try {
+			DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+			Document doc = dbf.newDocumentBuilder().parse(content);
+			content.close();
+			return parseSimpleXml(doc);
+		} catch (IOException e) {
+			throw new ParserConfigurationException("[IOException] " + e.getMessage());
+		}
+	}
+
+	public static Mixed parseSimpleXml(Document doc) throws ParserConfigurationException {
+		Element rootElement = doc.getDocumentElement();
+		return parseSimpleXmlChildren(rootElement, false);
+	}
+
+	private static Mixed parseSimpleXmlChildren(Node node, boolean parentSingle) {
+		Mixed data = new Mixed();
+		NodeList childNodes = node.getChildNodes();
+		int length = childNodes.getLength();
+		HashMap<String, Integer> childNameCount = new HashMap<String, Integer>();
+		for (int i=0; i<length; i++) {
+			Node child = childNodes.item(i);
+			Integer count = childNameCount.get(child.getNodeName());
+			if (count == null) {
+				childNameCount.put(child.getNodeName(), 1);
+			} else {
+				childNameCount.put(child.getNodeName(), count.intValue() + 1);
+			}
+		}
+		boolean selfSingle = length == 1;
+		for (int i=0; i<length; i++) {
+			Node child = childNodes.item(i);
+			int nodeType = child.getNodeType();
+			if (nodeType != 1 && nodeType != 3) {
+				System.out.println("nodeType: "+nodeType);
+			}
+			if (nodeType == Node.TEXT_NODE) {
+				continue;
+			}
+			String nodeName = child.getNodeName();
+			//唯一文本提升一级
+			if (child.hasChildNodes()) {
+				NodeList childChildren = child.getChildNodes();
+				if (childChildren.getLength() == 1
+						&& childChildren.item(0).getNodeType() == Node.TEXT_NODE) {
+					child = childChildren.item(0);
+				}
+			}
+			int nameCount = childNameCount.get(nodeName).intValue();
+			if (nameCount > 1 || (parentSingle && selfSingle)) {
+				Mixed list;
+				if (data.containsKey(nodeName)) {
+					list = data.get(nodeName);
+				} else {
+					list = new Mixed();
+					data.put(nodeName, list);
+				}
+				if (child.hasChildNodes()) {
+					list.add(parseSimpleXmlChildren(child, selfSingle));
+				} else {
+					String nodeValue = child.getNodeValue();
+					list.add(nodeValue);
+				}
+			} else {
+				if (child.hasChildNodes()) {
+					data.put(nodeName, parseSimpleXmlChildren(child, selfSingle));
+				} else {
+					String nodeValue = child.getNodeValue();
+					if ("true".equals(nodeValue)) {
+						data.put(nodeName, true);
+					} else if ("false".equals(nodeValue)) {
+						data.put(nodeName, false);
+					} else if (MixedUtils.isNumeric(nodeValue) && MixedUtils.isInt(nodeValue)) {
+						data.put(nodeName, Integer.parseInt(nodeValue));
+					} else {
+						data.put(nodeName, nodeValue);
+					}
+				}
+			}
+		}
+		return data;
+
+	}
+
+
+
 
 }

@@ -86,7 +86,7 @@ abstract public class ActionProcessor implements Runnable {
 								response.setError(checkE.getError(), checkE.getReason());
 								actionObj.setLastActionException(checkE); //保存最新的Action异常
 							} else {
-								NetLog.logWarn(e.getCause());
+								NetLog.logWarn(causeException);
 								String className = causeException.getClass().getName();
 								int pos = className.lastIndexOf('.');
 								if(pos >= 0 && pos+1 < className.length()) {

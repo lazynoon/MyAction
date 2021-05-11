@@ -15,7 +15,6 @@ import net_io.utils.Mixed.ENTITY_TYPE;
 
 
 public class JSONUtils {
-	public final static String ANONYMOUS_NODE = "__ANONYMOUS_NODE__"; 
 	public final static String EMPTY_NAME_NODE = "__EMPTY_NAME_NODE__";
     protected static final char[][] CHARS_ESCAPE = {
         {'\b', 'b'},
@@ -98,10 +97,19 @@ public class JSONUtils {
 		this.offset = 0;
 	}
 	public static Document toDOM(Mixed result) throws ParserConfigurationException {
+		return toDOM(result, null);
+	}
+	public static Document toDOM(Mixed result, String rootNodeName) throws ParserConfigurationException {
+		if (rootNodeName != null) {
+			rootNodeName = rootNodeName.trim();
+		}
+		if (rootNodeName == null || rootNodeName.length() == 0) {
+			rootNodeName = "ROOT";
+		}
 		DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 		Document doc = builder.newDocument();
 		
-		Element rootElement = doc.createElement("ROOT");
+		Element rootElement = doc.createElement(rootNodeName);
 		doc.appendChild(rootElement);
 		processOneNode(doc, result, rootElement);
 		return doc;
@@ -112,9 +120,7 @@ public class JSONUtils {
 		
 		if(type == Mixed.ENTITY_TYPE.LIST) {
 			for(int i=0; i<result.size(); i++) {
-				Element el = doc.createElement(ANONYMOUS_NODE);
-				element.appendChild(el);
-				processOneNode(doc, result.get(i), el);
+				processOneNode(doc, result.get(i), element);
 			}
 		} else if(type == Mixed.ENTITY_TYPE.MAP) {
 			String[] keys = result.keys();
