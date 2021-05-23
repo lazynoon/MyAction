@@ -1,33 +1,39 @@
 package net_io.utils;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import javax.xml.parsers.ParserConfigurationException;
 
 
-
+import net_io.mixed.POJOConverter;
 import org.w3c.dom.Document;
 
 
 public class Mixed {
-	public static enum ENTITY_TYPE{NULL, STRING, LIST, MAP, MIXED, BYTES, PRIMITIVE};
+	public enum ENTITY_TYPE{NULL, STRING, LIST, MAP, MIXED, BYTES, PRIMITIVE};
 	private Object data = null;
-	private List<String> sequence = null;
-	
+
 	public Mixed() {
-		
+	}
+
+	public Mixed(ENTITY_TYPE entityType) {
+		if (entityType == ENTITY_TYPE.LIST) {
+			data = new ArrayList<Mixed>();
+		} else if (entityType == ENTITY_TYPE.MAP) {
+			data = new LinkedHashMap<String, Mixed>();
+		}
 	}
 	public Mixed(Object value) {
-		set(value);
+		_reset(value, null);
+	}
+
+	public Mixed(Object value, POJOConverter pojoConverter) {
+		_reset(value, pojoConverter);
 	}
 	public ENTITY_TYPE type() {
 		if(data == null) {
 			return ENTITY_TYPE.NULL;
-		} else if(data instanceof Boolean || data instanceof Short || data instanceof Integer
-				|| data instanceof Long || data instanceof Float || data instanceof Double) {
+		} else if(data instanceof Number || data instanceof Boolean || data instanceof Character) {
 			return ENTITY_TYPE.PRIMITIVE;
 		} else if(data instanceof List) {
 			return ENTITY_TYPE.LIST;
@@ -133,6 +139,144 @@ public class Mixed {
 	 */
 	public double getDouble(String key) {
 		return MixedUtils.parseDouble(getString(key, ""));
+	}
+
+	/**
+	 * 计算布尔值
+	 * 	 以下任意条件为 false：
+	 * 	 1. key 不存在
+	 * 	 2. value 为 boolean 类型且 false
+	 * 	 3. value 空值：空字符串，空Map对象，空List
+	 * 	 4. value 为 字符串 false（英文字母大小写不敏感）
+	 * 	 5. value 为 数字类型 0
+	 * 	 6. value 为 字符串类型 0 （不含不可见字符，如空格）
+	 * @param key KEY
+	 * @return true OR false
+	 */
+	public boolean getBoolean(String key) {
+		Mixed result = _get(key);
+		if(result == null) {
+			return false;
+		}
+		return toBooleanValue();
+	}
+
+	public boolean toBooleanValue() {
+		if (data == null) {
+			return false;
+		}
+		if (data instanceof Boolean) {
+			return ((Boolean) (data)).booleanValue();
+		}
+		String str = data.toString();
+		if (str.length() == 0) {
+			return false;
+		}
+		if ("0".equalsIgnoreCase(str)) {
+			return false;
+		}
+		if ("false".equalsIgnoreCase(str)) {
+			return false;
+		}
+		return true;
+	}
+
+	public byte toByteValue() {
+		if (data == null) {
+			return 0;
+		}
+		if (data instanceof Byte) {
+			return ((Byte) data).byteValue();
+		}
+		String str = data.toString();
+		if (str.length() == 0) {
+			return 0;
+		}
+		return Byte.parseByte(str);
+	}
+
+	public char toCharValue() {
+		if (data == null) {
+			return 0;
+		}
+		if (data instanceof Character) {
+			return ((Character) data).charValue();
+		}
+		String str = data.toString();
+		if (str.length() == 0) {
+			return 0;
+		}
+		return (char) Integer.parseInt(str);
+	}
+
+	public short toShortValue() {
+		if (data == null) {
+			return 0;
+		}
+		if (data instanceof Short) {
+			return ((Short) data).shortValue();
+		}
+		String str = data.toString();
+		if (str.length() == 0) {
+			return 0;
+		}
+		return Short.parseShort(str);
+	}
+
+	public int toIntValue() {
+		if (data == null) {
+			return 0;
+		}
+		if (data instanceof Integer) {
+			return ((Integer) data).intValue();
+		}
+		String str = data.toString();
+		if (str.length() == 0) {
+			return 0;
+		}
+		return Integer.parseInt(str);
+	}
+
+	public long toLongValue() {
+		if (data == null) {
+			return 0;
+		}
+		if (data instanceof Long) {
+			return ((Long) data).longValue();
+		}
+		String str = data.toString();
+		if (str.length() == 0) {
+			return 0;
+		}
+		return Long.parseLong(str);
+	}
+
+	public float toFloatValue() {
+		if (data == null) {
+			return 0;
+		}
+		if (data instanceof Float) {
+			return ((Float) data).floatValue();
+		}
+		String str = data.toString();
+		if (str.length() == 0) {
+			return 0;
+		}
+		return Float.parseFloat(str);
+	}
+
+	public double toDoubleValue() {
+		if (data == null) {
+			return 0;
+		}
+		if (data instanceof Double) {
+			return ((Double) data).doubleValue();
+		}
+		String str = data.toString();
+		if (str.length() == 0) {
+			return 0;
+		}
+		return Double.parseDouble(str);
 	}
 
 	/**
@@ -293,30 +437,27 @@ public class Mixed {
 	}
 	
 	public String[] keys() {
+		String[] keys;
 		if(data == null) {
-			return new String[0];
-		}
-		int size = size();
-		String[] keys = new String[size];
-		switch(type()) {
-		case MAP:
-			for(int i=0; i<size; i++) {
-				keys[i] = sequence.get(i);
-			}
-			break;
-		case LIST:
-			for(int i=0; i<size; i++) {
+			keys = new String[0];
+		} else if(data instanceof List) {
+			List<Mixed> list = (List<Mixed>) data;
+			keys = new String[list.size()];
+			for(int i=0; i<keys.length; i++) {
 				keys[i] = String.valueOf(i);
 			}
-		default:
-			break;
+		} else if (data instanceof Map) {
+			Map<String, Mixed> map = (Map<String, Mixed>) data;
+			keys = new String[map.size()];
+			int i = 0;
+			for (String key : map.keySet()) {
+				keys[i++] = key;
+			}
+		} else {
+			keys = new String[0];
 		}
 		return keys;
 	}
-	
-//	public Object get() {
-//		return data;
-//	}
 	
 	/**
 	 * 获取Mixed对象中的核心Object对象
@@ -389,49 +530,57 @@ public class Mixed {
 			return result.get(key);
 		}
 	}
-	
-	@SuppressWarnings("unchecked")
+
+	@Deprecated
 	public Mixed set(Object value) {
+		return reset(value);
+	}
+
+	public Mixed reset(Object value) {
+		return _reset(value, null);
+	}
+
+	@SuppressWarnings("unchecked")
+	private Mixed _reset(Object value, POJOConverter pojoConverter) {
 		if(value == null) {
 			data = null;
-			sequence = null;
-		} else if(value instanceof Boolean || value instanceof Integer || value instanceof Long || value instanceof Float || value instanceof Double) {
+		} else if(value instanceof String) {
 			data = value;
-			sequence = null;
+		} else if(value instanceof Number || value instanceof Boolean || value instanceof Character) {
+			data = value;
 		} else if(value instanceof byte[]) {
 			data = value;
-			sequence = null;
 		} else if(value instanceof Object[]) {
 			data = new ArrayList<Mixed>();
-			sequence = null;
 			for(Object v : (Object[])value) {
 				((ArrayList<Mixed>)data).add(new Mixed(v));
 			}
 		} else if(value instanceof List) {
 			data = new ArrayList<Mixed>();
-			sequence = null;
 			for(Object v : (List<?>)value) {
-				((ArrayList<Mixed>)data).add(new Mixed(v));
+				((ArrayList<Mixed>)data).add(new Mixed(v, pojoConverter));
 			}
 		} else if(value instanceof Mixed) {
 			data = ((Mixed)value).data;
-			sequence = ((Mixed)value).sequence;
+		} else if(value instanceof Map) {
+			data = new LinkedHashMap<String, Mixed>();
+			for (Object k : ((Map<?, ?>) value).keySet()) {
+				String key;
+				if (k instanceof String) {
+					key = (String) k;
+				} else {
+					key = k.toString();
+				}
+				((Map<String, Mixed>) data).put(
+						key, new Mixed(((Map<?, ?>) value).get(k), pojoConverter));
+			}
+		} else if(pojoConverter != null) { //POJO转换器，优先于Mixed.TYPE与默认对象
+			data = pojoConverter._toMixedHashMap(value);
 		} else if(value instanceof TYPE) {
 			Mixed tmp = ((TYPE) value).toMixed();
 			data = tmp.data;
-			sequence = tmp.sequence;
-		} else if(value instanceof Map) {
-			data = new HashMap<String, Mixed>();
-			sequence = new ArrayList<String>();
-			for(Object k : ((Map<?, ?>)value).keySet()) {
-				String key = k.toString();
-				((HashMap<String, Mixed>)data).put(
-						key, new Mixed(((Map<?, ?>)value).get(k)));
-				sequence.add(key);
-			}
 		} else {
 			data = value.toString();
-			sequence = null;
 		}
 		return this;
 	}
@@ -443,13 +592,9 @@ public class Mixed {
 	public Mixed set(String key, Object value) {
 		//null也占KEY键。if(value == null) return this;
 		if(data == null || !(data instanceof Map<?, ?>)) {
-			data = new HashMap<String, Mixed>();
-			sequence = new ArrayList<String>();
+			data = new LinkedHashMap<String, Mixed>();
 		}
 		if(value instanceof Mixed) { //已经是ActionResult的对象了，不用转换
-			if(((Map<String, Mixed>)data).containsKey(key) == false) { //先检查key是否已存在
-				sequence.add(key);
-			}
 			((Map<String, Mixed>)data).put(key, (Mixed)value);
 //		} else if(value instanceof Integer) { //已经是ActionResult的对象了，不用转换
 //			if(((Map<String, Mixed>)data).containsKey(key) == false) { //先检查key是否已存在
@@ -457,9 +602,6 @@ public class Mixed {
 //			}
 //			((Map<String, Mixed>)data).put(key, (Mixed)value);
 		} else {
-			if(((Map<String, Mixed>)data).containsKey(key) == false) { //先检查key是否已存在
-				sequence.add(key);
-			}
 			((Map<String, Mixed>)data).put(key, new Mixed(value));
 		}
 		return this;
@@ -469,7 +611,6 @@ public class Mixed {
 	public Mixed set(int index, Object value) {
 		if(data == null || !(data instanceof List<?>)) {
 			data = new ArrayList<Mixed>();
-			sequence = null;
 		}
 		((List<Mixed>)data).set(index, new Mixed(value));
 		return this;
@@ -479,17 +620,18 @@ public class Mixed {
 	public Mixed add(Object value) {
 		if(data == null || !(data instanceof List<?>)) {
 			data = new ArrayList<Mixed>();
-			sequence = null;
 		}
 		((List<Mixed>)data).add(new Mixed(value));
 		return this;
 	}
-	
+
+	@Override
 	public String toString() {
 		if(data == null) {
 			return "";
-		}
-		if(data instanceof Mixed) {
+		} else if (data instanceof String) {
+			return (String) data;
+		} else if(data instanceof Mixed) {
 			Mixed mdata = (Mixed) data;
 			if(mdata.data == null) {
 				return "";

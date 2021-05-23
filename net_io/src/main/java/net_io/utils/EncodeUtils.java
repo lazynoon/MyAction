@@ -213,6 +213,42 @@ public class EncodeUtils {
 	}
 
 	/**
+	 * 转换字符串为首字母大写
+	 * @param str 源字符
+	 * @return 若字符串以英文单词开头则返回首字母大写，否则返回源字符串
+	 */
+	public static String stringUpperFirst(String str) {
+		if (str == null || str.length() == 0) {
+			return str;
+		}
+		char firstChar = str.charAt(0);
+		if (firstChar >= 'a' && firstChar <= 'z') {
+			firstChar -= 32;
+			return firstChar + str.substring(1);
+		} else {
+			return str;
+		}
+	}
+
+	/**
+	 * 转换字符串为首字母小写
+	 * @param str 源字符
+	 * @return 若字符串以英文单词开头则返回首字母小写，否则返回源字符串
+	 */
+	public static String stringLowerFirst(String str) {
+		if (str == null || str.length() == 0) {
+			return str;
+		}
+		char firstChar = str.charAt(0);
+		if (firstChar >= 'A' && firstChar <= 'Z') {
+			firstChar += 32;
+			return firstChar + str.substring(1);
+		} else {
+			return str;
+		}
+	}
+
+	/**
 	 * 按62进制编码（编码率：7/5）
 	 * @param bts 二进制数组
 	 * @return 编码字符范围：0-9A-Za-z
