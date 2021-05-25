@@ -9,6 +9,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.text.ParseException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -157,7 +158,7 @@ public class POJOConverter {
 			throw new IllegalArgumentException("POJOConverter.toLinkedHashMap parameter obj is null");
 		}
 		if (obj instanceof Date) {
-			return DateUtil.formatDateTime((Date) obj);
+			return objectConvertConfig.dateFormat.format((Date) obj);
 		}
 		LinkedHashMap<String, Mixed> data = new LinkedHashMap<String, Mixed>();
 		ClassBindType bindType = ClassBindTypeInstance.getInstance(obj.getClass());
@@ -239,7 +240,7 @@ public class POJOConverter {
 		}
 	}
 
-	private static Object getPrimitiveValue(Mixed sourceValue, Class<?> valueClass) throws JSONException {
+	private Object getPrimitiveValue(Mixed sourceValue, Class<?> valueClass) throws JSONException {
 		Object targetValue;
 		if (valueClass.isPrimitive()) {
 			if (valueClass == int.class) {
@@ -300,7 +301,11 @@ public class POJOConverter {
 			if (str == null || str.length() == 0) {
 				return null;
 			}
-			targetValue = DateUtil.parseDate(str);
+			try {
+				targetValue = objectConvertConfig.dateFormat.parse(str);
+			} catch (ParseException e) {
+				throw new JSONException("ParseException - " + e.getMessage());
+			}
 		} else if (valueClass == Boolean.class) {
 			targetValue = sourceValue.toBooleanValue();
 		} else if (valueClass == Character.class) {
