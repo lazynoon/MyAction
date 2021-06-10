@@ -120,6 +120,11 @@ public class JSONUtils {
 		
 		if(type == Mixed.ENTITY_TYPE.LIST) {
 			for(int i=0; i<result.size(); i++) {
+				if (i > 0) {
+					Element siblingElement = doc.createElement(element.getTagName());
+					element.getParentNode().appendChild(siblingElement);
+					element = siblingElement;
+				}
 				processOneNode(doc, result.get(i), element);
 			}
 		} else if(type == Mixed.ENTITY_TYPE.MAP) {
@@ -129,9 +134,9 @@ public class JSONUtils {
 				if(nodeName.length() == 0) {
 					nodeName = EMPTY_NAME_NODE;
 				}
-				Element el = doc.createElement(nodeName);
-				element.appendChild(el);
-				processOneNode(doc, result.get(keys[i]), el);
+				Element childElement = doc.createElement(nodeName);
+				element.appendChild(childElement);
+				processOneNode(doc, result.get(keys[i]), childElement);
 			}
 		} else {
 			element.appendChild(doc.createTextNode(result.toString()));
