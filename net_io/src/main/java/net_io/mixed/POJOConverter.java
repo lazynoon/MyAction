@@ -9,6 +9,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -158,7 +159,8 @@ public class POJOConverter {
 			throw new IllegalArgumentException("POJOConverter.toLinkedHashMap parameter obj is null");
 		}
 		if (obj instanceof Date) {
-			return objectConvertConfig.dateFormat.format((Date) obj);
+			DateFormat dateFormat = (DateFormat) objectConvertConfig.dateFormat.clone();
+			return dateFormat.format((Date) obj);
 		}
 		LinkedHashMap<String, Mixed> data = new LinkedHashMap<String, Mixed>();
 		ClassBindType bindType = ClassBindTypeInstance.getInstance(obj.getClass());
@@ -302,7 +304,8 @@ public class POJOConverter {
 				return null;
 			}
 			try {
-				targetValue = objectConvertConfig.dateFormat.parse(str);
+				DateFormat dateFormat = (DateFormat) objectConvertConfig.dateFormat.clone();
+				targetValue = dateFormat.parse(str);
 			} catch (ParseException e) {
 				throw new JSONException("ParseException - " + e.getMessage());
 			}

@@ -244,9 +244,9 @@ public class MixedUtils {
 		for (int i=0; i<length; i++) {
 			Node child = childNodes.item(i);
 			int nodeType = child.getNodeType();
-			if (nodeType != 1 && nodeType != 3) {
-				System.out.println("nodeType: "+nodeType);
-			}
+//			if (nodeType != 1 && nodeType != 3) {
+//				System.out.println("nodeType: "+nodeType);
+//			}
 			if (nodeType == Node.TEXT_NODE) {
 				continue;
 			}

@@ -21,7 +21,7 @@ public class ObjectConvertConfig {
 	}
 
 	public void setDateFormat(DateFormat dateFormat) {
-		if (namingStrategy == null) {
+		if (dateFormat == null) {
 			throw new IllegalArgumentException("dateFormat is null");
 		}
 		this.dateFormat = dateFormat;
