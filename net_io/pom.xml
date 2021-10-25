@@ -6,7 +6,7 @@
 
     <groupId>com.github.lazynoon</groupId>
     <artifactId>myaction</artifactId>
-    <version>1.3.12</version>
+    <version>1.3.13</version>
     <name>myaction</name>
     <description>Java develop framework</description>
     <url>https://github.com/lazynoon/myaction</url>

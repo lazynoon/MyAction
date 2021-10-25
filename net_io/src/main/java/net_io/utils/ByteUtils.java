@@ -167,7 +167,7 @@ public class ByteUtils {
 	 * @param data 字节数组
 	 * @param offset 解析数据的偏移量
 	 * @param byteCount 取字节数量（最小1，最大8）
-	 * @return long型数字（允许负数）
+	 * @return 解析数据的偏移量
 	 */
 	public static int writeNumberAsBigEndian(long num, byte[] data, int offset, int byteCount) {
 		if(byteCount <= 0 || byteCount > 8) {

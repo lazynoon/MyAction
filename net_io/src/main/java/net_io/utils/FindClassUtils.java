@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -31,11 +32,10 @@ public class FindClassUtils {
 		try {
 //			for(File classPath : CLASS_PATH_ARRAY) {
 			for(File classPath : getClassPath(loader)) {
-				if(!classPath.exists())
+				if(!classPath.exists()) {
 					continue;
-				for(String className : _getClassInPackage(pkgName, classPath)) {
-					ret.add(className);
 				}
+				ret.addAll(_getClassInPackage(pkgName, classPath));
 			}
 		} catch (Exception e) {
 			throw new RuntimeException(e);
@@ -67,7 +67,11 @@ public class FindClassUtils {
 				if(!dir.exists()) {
 					continue;
 				}
-				for(File file : dir.listFiles()) {
+				File[] files = dir.listFiles();
+				if (files == null) {
+					continue;
+				}
+				for(File file : files) {
 					String filename = file.getName();
 					if(filename.startsWith(".")) {
 						continue; //ignore hidden file
@@ -123,8 +127,16 @@ public class FindClassUtils {
 			NetLog.logDebug("[FindClass] current OS: "+System.getProperty("os.name"));
 		}
 		for (String pro : CLASS_PATH_PROP) {
-			String[] pathes = System.getProperty(pro).split(delim);
-			for (String path : pathes) {
+			String classPathConfig = System.getProperty(pro);
+			if (classPathConfig == null) {
+				continue;
+			}
+			String[] paths = classPathConfig.split(delim);
+			for (String path : paths) {
+				path = path.trim();
+				if (path.length() == 0) {
+					continue;
+				}
 				if(NetLog.LOG_LEVEL <= NetLog.RECORD_ALL) {
 					NetLog.logDebug("[FindClass] auto search classpath: "+path);
 				}

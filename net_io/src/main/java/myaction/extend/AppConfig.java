@@ -213,18 +213,28 @@ public class AppConfig {
 			return false;
 		}
 	}
-	
+
+	@Deprecated
 	public static void loadProperites() throws IOException {
+		loadProperties();
+	}
+
+	public static void loadProperties() throws IOException {
 		/*
 		 * 读取配置文件config.properties, Class.getResourceAsStream(String path),
 		 * path 不以’/'开头时默认是从此类所在的包下取资源，以’/'开头则是从
 		 * ClassPath根下获取。其只是通过path构造一个绝对路径，最终还是由ClassLoader获取资源
 		 */
 		InputStream in = AppConfig.class.getResourceAsStream("/config.properties");
-		loadProperites(in);
+		loadProperties(in);
 	}
-	
+
+	@Deprecated
 	public static void loadProperites(InputStream in) throws IOException {
+		loadProperties(in);
+	}
+
+	public static void loadProperties(InputStream in) throws IOException {
 		Properties prop = new Properties();
 		prop.load(in);
 		Enumeration<Object> names = prop.keys();

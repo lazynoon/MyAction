@@ -23,17 +23,27 @@ public class RSA {
 	RSAPublicKey publicKey = null;
 	RSAPrivateKey privateKey = null;
 	
-	public RSA(KeyMode keyMode, String secretKey) {
+	public RSA(KeyMode keyMode, String secretKey) throws CryptoException {
 		this.keyMode = keyMode;
 		initKey(EncodeUtils.base64Decode(secretKey));
 	}
 
-	public RSA(KeyMode keyMode, byte[] secretKey) {
+	public RSA(KeyMode keyMode, byte[] secretKey) throws CryptoException {
 		this.keyMode = keyMode;
 		initKey(secretKey);
 	}
-	
-	private void initKey(byte[] secretKey) {
+
+	public RSA(RSAPrivateKey privateKey) {
+		this.keyMode = KeyMode.PRIVATE_KEY;
+		this.privateKey = privateKey;
+	}
+
+	public RSA(RSAPublicKey publicKey) {
+		this.keyMode = KeyMode.PUBLIC_KEY;
+		this.publicKey = publicKey;
+	}
+
+	private void initKey(byte[] secretKey) throws CryptoException {
 		try {
 			if(this.keyMode == KeyMode.PRIVATE_KEY) {
 				privateKey = parsePrivateKey(secretKey);
@@ -41,11 +51,9 @@ public class RSA {
 				publicKey = parsePublicKey(secretKey);
 			}
 		} catch (NoSuchAlgorithmException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			throw new CryptoException(e);
 		} catch (InvalidKeySpecException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			throw new CryptoException(e);
 		}
 	}
 
