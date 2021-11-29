@@ -33,7 +33,7 @@ public class ActionFactory {
 	}
 	
 	/** 添加一条重写规则 **/
-	public static void adRewriteRule(String regex, String dstPath) {
+	public static void addRewriteRule(String regex, String dstPath) {
 		if(regex == null || regex.length() == 0) {
 			throw new RuntimeException("The parameter of 'path' is empty.");
 		}

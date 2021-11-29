@@ -91,7 +91,7 @@ abstract public class ActionRegister {
 	}
 
 	protected void addRewriteRule(String regex, String dstPath) {
-		ActionFactory.adRewriteRule(regex, dstPath);
+		ActionFactory.addRewriteRule(regex, dstPath);
 	}
 
 	private String filterPathName(String name) {

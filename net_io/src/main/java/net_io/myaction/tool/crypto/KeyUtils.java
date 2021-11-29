@@ -13,9 +13,14 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Enumeration;
 
 public class KeyUtils {
+	public static final String KEY_ALGORITHM_RSA = "RSA";
+
 	/**
 	 * 根据pfx证书得到私钥
 	 *
@@ -45,6 +50,26 @@ public class KeyUtils {
 		}
 	}
 
+	/**
+	 * 从纯KEY字节流，加载私钥
+	 * @param keyData 纯KEY
+	 * @param keyAlgorithm 算法（如：RSA）
+	 * @return 私钥对象（非空）
+	 * @throws CryptoException
+	 */
+	public static PrivateKey getPrivateKeyFromOrigin(byte[] keyData, String keyAlgorithm) throws CryptoException {
+		try {
+			PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyData);
+			KeyFactory keyFactory = KeyFactory.getInstance(keyAlgorithm);
+			PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+			return privateKey;
+		} catch (NoSuchAlgorithmException e) {
+			throw new CryptoException(e);
+		} catch (InvalidKeySpecException e) {
+			throw new CryptoException(e);
+		}
+	}
+
 	public static PublicKey getPublicKeyFromCer(byte[] cerData) throws CryptoException {
 		try {
 			CertificateFactory cf = CertificateFactory.getInstance("X.509");
@@ -55,6 +80,21 @@ public class KeyUtils {
 			throw new CryptoException(e);
 		}
 	}
+
+	public static PublicKey getPublicKeyFromOrigin(byte[] keyData, String keyAlgorithm) throws CryptoException {
+		try {
+			X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyData);
+			KeyFactory keyFactory = KeyFactory.getInstance(keyAlgorithm);
+			PublicKey publicKey = keyFactory.generatePublic(keySpec);
+			return publicKey;
+		} catch (NoSuchAlgorithmException e) {
+			throw new CryptoException(e);
+		} catch (InvalidKeySpecException e) {
+			throw new CryptoException(e);
+		}
+	}
+
+
 
 	public static RSAPrivateKey getRSAPrivateKeyFromPfx(byte[] pfxData, String password) throws CryptoException {
 		return (RSAPrivateKey) getPrivateKeyFromPfx(pfxData, password);
