@@ -34,6 +34,13 @@ abstract public class BaseServiceAction extends BaseMyAction {
 		sRunCount.incrementAndGet(); //运行次数总计
 	}
 
+	/**
+	 * 获取参与签名的字段名（参与签名字段不允许为空）
+	 * @return 返回null或空数组，则按默认校验签名
+	 */
+	protected String[] getSignFieldNames() {
+		return null;
+	}
 	/** Action执行前过滤器（支持异常，并中断进程） **/
 	protected void filterStart() throws Exception {}
 	/** Action执行后过滤器（若有异常，不影响主进程） **/
@@ -97,7 +104,7 @@ abstract public class BaseServiceAction extends BaseMyAction {
 	 * 		必要字段：g_appid, g_time, g_sign
 	 * @param params
 	 */
-	protected static void checkApiSign(Map<String, String> params, String appKey) throws CheckException {
+	protected void checkApiSign(Map<String, String> params, String appKey) throws CheckException {
 		String appID = params.get("g_appid");
 		String sTime = params.get("g_time");
 		String sign = params.get("g_sign");
@@ -122,21 +129,30 @@ abstract public class BaseServiceAction extends BaseMyAction {
 			throw new CheckException(624, "The sign had been expire.");
 		}
 		//验证签名
-		String[] names = new String[params.size()];
-		int index = 0;
-		for(String name : params.keySet()) {
-			names[index++] = name;
+		String[] signNames = getSignFieldNames();
+		if (signNames != null && signNames.length > 0) {
+			for (String name : signNames) {
+				if (MixedUtils.isEmpty(params.get(name))) {
+					throw new CheckException(625, "The parameter of '" + name + "' is empty.");
+				}
+			}
+		} else {
+			signNames = new String[params.size()];
+			int index = 0;
+			for (String name : params.keySet()) {
+				signNames[index++] = name;
+			}
+			signNames = SortUtil.sort(signNames, SortUtil.ASC);
 		}
-		names = SortUtil.sort(names, SortUtil.ASC);
 		StringBuilder build = new StringBuilder();
-		for(String name : names) {
+		for(String name : signNames) {
 			if("g_sign".equals(name)) {
 				continue;
 			}
 			build.append(params.get(name));
 		}
 		build.append(appKey);			
-		String rightSign = MD5Util.md5(build.toString());
+		String rightSign = EncodeUtils.md5(build.toString());
 		if(sign.equals(rightSign) == false) {
 			if(checkOldSign) {
 				String agentID = params.get("g_agent");

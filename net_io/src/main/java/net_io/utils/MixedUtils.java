@@ -276,7 +276,14 @@ public class MixedUtils {
 				}
 			} else {
 				if (child.hasChildNodes()) {
-					data.put(nodeName, parseSimpleXmlChildren(child, selfSingle));
+					Node firstNode = child.getFirstChild();
+					if (firstNode != null
+							&& firstNode.getNodeType() == Node.CDATA_SECTION_NODE
+							&& child.getChildNodes().getLength() == 1) {
+						data.put(nodeName, firstNode.getNodeValue()); //CDATA内容
+					} else {
+						data.put(nodeName, parseSimpleXmlChildren(child, selfSingle));
+					}
 				} else {
 					String nodeValue = child.getNodeValue();
 					if ("true".equals(nodeValue)) {
