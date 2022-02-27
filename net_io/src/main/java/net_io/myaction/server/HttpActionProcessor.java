@@ -56,6 +56,7 @@ public class HttpActionProcessor extends ActionProcessor {
 				if(attachment != null) {
 					contentLength += attachment.length;
 				}
+				headers.set("Content-Length", String.valueOf(contentLength));
 				httpExchange.sendResponseHeaders(response.getHttpCode(), contentLength); // 设置响应头属性及响应信息的长度
 				//总是输出内容
 				if(body != null) {
